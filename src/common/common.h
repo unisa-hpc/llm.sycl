@@ -1,0 +1,16 @@
+//
+// Created by saleh on 16/05/24.
+//
+
+#pragma once
+
+#include <string>
+#include "spdlog/spdlog.h"
+
+extern spdlog::logger *logger;
+extern int globalBatchsize;
+extern bool globalIsSilent;
+extern std::string globalDirData;
+extern std::string globalDirLog;
+
+extern void initLogger();
