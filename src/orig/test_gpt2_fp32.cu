@@ -48,7 +48,7 @@ int main(int argc, char *argv[]) {
 
     // build the GPT-2 model from a checkpoint
     GPT2 model;
-    gpt2_build_from_checkpoint(&model, "../data/dataset_prepared/gpt2_124M.bin");
+    gpt2_build_from_checkpoint(&model, "../hBuff/dataset_prepared/gpt2_124M.bin");
 
     // int C = model.config.channels;
     int V = model.config.vocab_size;
@@ -57,7 +57,7 @@ int main(int argc, char *argv[]) {
     // int L = model.config.num_layers;
 
     // load additional information that we will use for debugging and error checking
-    FILE *state_file = fopenCheck("../data/dataset_prepared/gpt2_124M_debug_state.bin", "rb");
+    FILE *state_file = fopenCheck("../hBuff/dataset_prepared/gpt2_124M_debug_state.bin", "rb");
     int state_header[256];
     freadCheck(state_header, sizeof(int), 256, state_file);
     if (state_header[0] != 20240327) { printf("Bad magic state file\n"); exit(EXIT_FAILURE); }

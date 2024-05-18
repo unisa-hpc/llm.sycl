@@ -1,5 +1,3 @@
-set(COMPILE_FLAGS "-fsycl -fsycl-targets=nvptx64-nvidia-cuda,spir64 -Xsycl-target-backend=nvptx64-nvidia-cuda --cuda-gpu-arch=sm_80 -Wall")
-set(LINK_FLAGS "-fsycl -fsycl-targets=nvptx64-nvidia-cuda,spir64 -Xsycl-target-backend=nvptx64-nvidia-cuda --cuda-gpu-arch=sm_80")
 
 
 set(SOURCE_FILE TestVecAdd.cpp

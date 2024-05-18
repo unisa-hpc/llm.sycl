@@ -1,5 +1,5 @@
 //==============================================================
-// Vector Add is the equivalent of a Hello, World! sample for data parallel
+// Vector Add is the equivalent of a Hello, World! sample for hBuff parallel
 // programs. Building and running the sample verifies that your development
 // environment is setup correctly and demonstrates the use of the core features
 // of SYCL. This sample runs on both CPU and GPU (or FPGA). When run, it
@@ -12,8 +12,8 @@
 // relevant terms noted in the comments.
 //
 // SYCL material used in the code sample:
-// •	A one dimensional array of data.
-// •	A device queue, buffer, accessor, and kernel.
+// •	A one dimensional array of hBuff.
+// •	A device queue, dBuff, accessor, and kernel.
 //==============================================================
 // Copyright © Intel Corporation
 //
@@ -31,7 +31,7 @@ using namespace sycl;
 
 // num_repetitions: How many times to repeat the kernel invocation
 size_t num_repetitions = 1;
-// Vector type and data size for this example.
+// Vector type and hBuff size for this example.
 size_t vector_size = 10000;
 typedef std::vector<int> IntVector;
 
@@ -55,11 +55,11 @@ static auto exception_handler = [](sycl::exception_list e_list) {
 //************************************
 void VectorAdd(queue &q, const IntVector &a_vector, const IntVector &b_vector,
                IntVector &sum_parallel) {
-    // Create the range object for the vectors managed by the buffer.
+    // Create the range object for the vectors managed by the dBuff.
     range<1> num_items{a_vector.size()};
 
-    // Create buffers that hold the data shared between the host and the devices.
-    // The buffer destructor is responsible to copy the data back to host when it
+    // Create buffers that hold the hBuff shared between the host and the devices.
+    // The dBuff destructor is responsible to copy the hBuff back to host when it
     // goes out of scope.
     buffer a_buf(a_vector);
     buffer b_buf(b_vector);
@@ -68,14 +68,14 @@ void VectorAdd(queue &q, const IntVector &a_vector, const IntVector &b_vector,
     for (size_t i = 0; i < num_repetitions; i++ ) {
 
         // Submit a command group to the queue by a lambda function that contains the
-        // data access permission and device computation (kernel).
+        // hBuff access permission and device computation (kernel).
         q.submit([&](handler &h) {
-            // Create an accessor for each buffer with access permission: read, write or
-            // read/write. The accessor is a mean to access the memory in the buffer.
+            // Create an accessor for each dBuff with access permission: read, write or
+            // read/write. The accessor is a mean to access the memory in the dBuff.
             accessor a(a_buf, h, read_only);
             accessor b(b_buf, h, read_only);
 
-            // The sum_accessor is used to store (with write permission) the sum data.
+            // The sum_accessor is used to store (with write permission) the sum hBuff.
             accessor sum(sum_buf, h, write_only, no_init);
 
             // Use parallel_for to run vector addition in parallel on device. This
@@ -121,7 +121,7 @@ int main(int argc, char* argv[]) {
     auto selector = gpu_selector_v;
 #endif
 
-    // Create vector objects with "vector_size" to store the input and output data.
+    // Create vector objects with "vector_size" to store the input and output hBuff.
     IntVector a, b, sum_sequential, sum_parallel;
     a.resize(vector_size);
     b.resize(vector_size);

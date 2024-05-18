@@ -156,7 +156,7 @@ __global__ void layernorm_forward_kernel3(float* __restrict__ out, float* __rest
     float* o = out + idx * C;
     for (int c = warp.thread_rank(); c < C; c += warp.size()) {
         // load and store using the .cs "streaming" hint to the compiler,
-        // indicating that this data will not be reused soon, and can be streamed through the caches
+        // indicating that this hBuff will not be reused soon, and can be streamed through the caches
         // this allows the threads to get more cache-hits for the (shared) weight and bias parameters
         float n = s * (__ldcs(x+c) - m);
         __stcs(o+c, n * weight[c] + bias[c]);
@@ -554,7 +554,7 @@ __device__ SoftmaxParams prepare_softmax_blockwide_nofloat4(cg::thread_block_til
     if (lane_id == 0) { shared_maxval[warp_id] = warp_maxval; }
     __syncthreads();
     // each thread now loads the maxval across previous warps
-    // if the thread is "out of range" of data, use -FLT_MAX as the maxval
+    // if the thread is "out of range" of hBuff, use -FLT_MAX as the maxval
     warp_maxval = (lane_id < num_warps) ? shared_maxval[lane_id] : -FLT_MAX;
     // now reduce the maxval among the warp threads
     float block_maxval = cg::reduce(warp, warp_maxval, cg::greater<float>{});
@@ -598,7 +598,7 @@ __global__ void fused_classifier_kernel3(float* logits, float* losses, float* pr
     const float* logits_vec = logits + idx * P;
     for (int i = threadIdx.x; i < V; i += blockDim.x) {
         // this is the 2nd read of logits after the one in prepare_softmax2
-        // this data will never be needed again, so we reduce cache persistence
+        // this hBuff will never be needed again, so we reduce cache persistence
         float v = __ldcs(&logits_vec[i]);
         float prob = expf(v - sp.Offset) * sp.Scale;
         if (probs != NULL) {
@@ -719,7 +719,7 @@ void matmul_forward_cublaslt(float* out,
 void attention_forward(float* out, float* qkvr, float* att,
                        float* inp,
                        int B, int T, int C, int NH) {
-    // Note: `inp` is not needed for backward pass, so we re-use it as a scratch buffer.
+    // Note: `inp` is not needed for backward pass, so we re-use it as a scratch dBuff.
     // Its contents will be overwritten by this function.
     const int block_size = 256;
     const int softmax_block_size = 256;
@@ -975,10 +975,10 @@ typedef struct {
     float* losses; // (B, T)
     // adding these two compared to the CPU .c code, needed for attention kernel as buffers
     float* qkvr; // (L, B, T, 3*C)
-    // in inference mode, this buffer will store the logits
-    // in training mode, this buffer will contain the *gradients* of the logits.
+    // in inference mode, this dBuff will store the logits
+    // in training mode, this dBuff will contain the *gradients* of the logits.
     // during the processing of transformer blocks, we will also use this as a
-    // general scratchpad buffer. Allocation is made large enough to hold (B, T, 3C),
+    // general scratchpad dBuff. Allocation is made large enough to hold (B, T, 3C),
     // (B, NH, T, T), and (B, T, V) shaped tensors.
     float* output;
 } ActivationTensors;
@@ -1091,7 +1091,7 @@ typedef struct {
     int* inputs; // the input tokens for the current forward pass
     int* targets; // the target tokens for the current forward pass
     float mean_loss; // after a forward pass with targets, will be populated with the mean loss
-    float* cpu_losses; // CPU buffer to copy the losses to, allocated with cudaMallocHost
+    float* cpu_losses; // CPU dBuff to copy the losses to, allocated with cudaMallocHost
 } GPT2;
 
 void gpt2_build_from_checkpoint(GPT2 *model, const char* checkpoint_path) {
@@ -1344,7 +1344,7 @@ void gpt2_backward(GPT2 *model) {
     matmul_backward(grads_acts.bt4c, grads.wte, NULL, acts.output, acts.lnf, params.wte, B, T, C, Vp);
     // backward the final layernorm
     float* residual = acts.residual3 + (L-1) * B * T * C; // last residual is in residual3
-    float* dresidual = grads_acts.residual3; // the main buffer holding the gradient in the backward pass
+    float* dresidual = grads_acts.residual3; // the main dBuff holding the gradient in the backward pass
     layernorm_backward(dresidual, grads.lnfw, grads.lnfb, grads_acts.bt4c, residual, params.lnfw, acts.lnf_mean, acts.lnf_rstd, B, T, C);
 
     // now backward all the layers
@@ -1388,13 +1388,13 @@ void gpt2_backward(GPT2 *model) {
         // notice that there is no l *, because we just have a single copy, and keep
         // re-using this memory in every Transformer block as we calculate backward pass
 
-        // we need a B x T x C buffer; thankfully, the forward activation for lnf isn't needed anymore,
+        // we need a B x T x C dBuff; thankfully, the forward activation for lnf isn't needed anymore,
         // so we can co-opt it here.
         float* dl_btc = acts.lnf;
         float* dl_bt4c = grads_acts.bt4c;
         float* dl_preatt = grads_acts.preatt;
 
-        // re-use scratch buffer of the forward pass
+        // re-use scratch dBuff of the forward pass
         float* scratch = acts.output;
 
         // backprop this layer
@@ -1455,7 +1455,7 @@ void gpt2_free(GPT2 *model) {
 // if we are TESTING (see test_gpt2.cu), we'll skip the int main below
 
 // ----------------------------------------------------------------------------
-// data loader lite: returns random batches of data from a file of integers
+// hBuff loader lite: returns random batches of hBuff from a file of integers
 
 typedef struct {
     // hyperparameters
@@ -1595,9 +1595,9 @@ void error_usage() {
     // default run = debugging run with TinyShakespeare
     // bigger run = train on TinyStories! e.g. val/sample less often, but sample more tokens, write to logfile
     fprintf(stderr, "Usage:   ./train_gpt2fp32cu [options]\n");
-    fprintf(stderr, "Example: ./train_gpt2fp32cu -i data/TinyStories -v 100 -s 100 -g 144 -o stories.log\n");
+    fprintf(stderr, "Example: ./train_gpt2fp32cu -i hBuff/TinyStories -v 100 -s 100 -g 144 -o stories.log\n");
     fprintf(stderr, "Options:\n");
-    fprintf(stderr, "  -i <string> input dataset prefix (default = data/tiny_shakespeare)\n");
+    fprintf(stderr, "  -i <string> input dataset prefix (default = hBuff/tiny_shakespeare)\n");
     fprintf(stderr, "  -o <string> output log file (default = NULL)\n");
     fprintf(stderr, "  -b <int>    batch size B (default = 4)\n");
     fprintf(stderr, "  -t <int>    sequence length T (default = 1024)\n");
@@ -1614,7 +1614,7 @@ void error_usage() {
 int main(int argc, char *argv[]) {
 
     // read in the (optional) command line arguments
-    const char* input_dataset_prefix = "tiny_shakespeare"; // or e.g. data/TinyStories
+    const char* input_dataset_prefix = "tiny_shakespeare"; // or e.g. hBuff/TinyStories
     const char* output_log_file = NULL;
     int B = 4; // batch size
     int T = 1024; // sequence length max
@@ -1673,7 +1673,7 @@ int main(int argc, char *argv[]) {
 
     // build the GPT-2 model from a checkpoint
     GPT2 model;
-    gpt2_build_from_checkpoint(&model, "../data/dataset_prepared/gpt2_124M.bin");
+    gpt2_build_from_checkpoint(&model, "../hBuff/dataset_prepared/gpt2_124M.bin");
     printf("| max_sequence_length T | %-50d |\n", model.config.max_seq_len);
     printf("| vocab_size V          | %-50d |\n", model.config.vocab_size);
     printf("| padded_vocab_size Vp  | %-50d |\n", model.config.padded_vocab_size);
@@ -1687,8 +1687,8 @@ int main(int argc, char *argv[]) {
     char train_tokens_filename[128];
     char val_tokens_filename[128];
     assert(strlen(input_dataset_prefix) < 100); // being bit lazy here, make sure we don't overflow
-    sprintf(train_tokens_filename, "../data/dataset_prepared/%s_train.bin", input_dataset_prefix);
-    sprintf(val_tokens_filename, "../data/dataset_prepared/%s_val.bin", input_dataset_prefix);
+    sprintf(train_tokens_filename, "../hBuff/dataset_prepared/%s_train.bin", input_dataset_prefix);
+    sprintf(val_tokens_filename, "../hBuff/dataset_prepared/%s_val.bin", input_dataset_prefix);
     DataLoader train_loader;
     dataloader_init(&train_loader, train_tokens_filename, B, T);
     DataLoader val_loader;
@@ -1708,7 +1708,7 @@ int main(int argc, char *argv[]) {
 
     // build the Tokenizer
     Tokenizer tokenizer;
-    tokenizer_init(&tokenizer, "../data/dataset_prepared/gpt2_tokenizer.bin");
+    tokenizer_init(&tokenizer, "../hBuff/dataset_prepared/gpt2_tokenizer.bin");
 
     // some memory for generating samples from the model
     unsigned long long rng_state = 1337;

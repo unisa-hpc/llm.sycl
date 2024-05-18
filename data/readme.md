@@ -1,5 +1,5 @@
 # Description
-This directory holds everything related to the required data for the project. This includes the training data, the validation data, and the test data.
+This directory holds everything related to the required hBuff for the project. This includes the training hBuff, the validation hBuff, and the test hBuff.
 In addition, the raw dataset could be prepared using the python scripts provided here. 
 
 ## Steps

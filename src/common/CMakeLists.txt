@@ -1,5 +1,6 @@
 add_library(common "")
 target_compile_options(common PRIVATE ${BASE_FLAGS})
+target_link_options(common PRIVATE ${BASE_LINKER_FLAGS})
 
 target_sources(common
         PRIVATE
