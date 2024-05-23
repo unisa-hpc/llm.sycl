@@ -1595,9 +1595,9 @@ void error_usage() {
     // default run = debugging run with TinyShakespeare
     // bigger run = train on TinyStories! e.g. val/sample less often, but sample more tokens, write to logfile
     fprintf(stderr, "Usage:   ./train_gpt2fp32cu [options]\n");
-    fprintf(stderr, "Example: ./train_gpt2fp32cu -i hBuff/TinyStories -v 100 -s 100 -g 144 -o stories.log\n");
+    fprintf(stderr, "Example: ./train_gpt2fp32cu -i data/TinyStories -v 100 -s 100 -g 144 -o stories.log\n");
     fprintf(stderr, "Options:\n");
-    fprintf(stderr, "  -i <string> input dataset prefix (default = hBuff/tiny_shakespeare)\n");
+    fprintf(stderr, "  -i <string> input dataset prefix (default = data/tiny_shakespeare)\n");
     fprintf(stderr, "  -o <string> output log file (default = NULL)\n");
     fprintf(stderr, "  -b <int>    batch size B (default = 4)\n");
     fprintf(stderr, "  -t <int>    sequence length T (default = 1024)\n");
@@ -1614,7 +1614,7 @@ void error_usage() {
 int main(int argc, char *argv[]) {
 
     // read in the (optional) command line arguments
-    const char* input_dataset_prefix = "tiny_shakespeare"; // or e.g. hBuff/TinyStories
+    const char* input_dataset_prefix = "tiny_shakespeare"; // or e.g. data/TinyStories
     const char* output_log_file = NULL;
     int B = 4; // batch size
     int T = 1024; // sequence length max
@@ -1673,7 +1673,7 @@ int main(int argc, char *argv[]) {
 
     // build the GPT-2 model from a checkpoint
     GPT2 model;
-    gpt2_build_from_checkpoint(&model, "../hBuff/dataset_prepared/gpt2_124M.bin");
+    gpt2_build_from_checkpoint(&model, "../data/dataset_prepared/gpt2_124M.bin");
     printf("| max_sequence_length T | %-50d |\n", model.config.max_seq_len);
     printf("| vocab_size V          | %-50d |\n", model.config.vocab_size);
     printf("| padded_vocab_size Vp  | %-50d |\n", model.config.padded_vocab_size);
@@ -1687,8 +1687,8 @@ int main(int argc, char *argv[]) {
     char train_tokens_filename[128];
     char val_tokens_filename[128];
     assert(strlen(input_dataset_prefix) < 100); // being bit lazy here, make sure we don't overflow
-    sprintf(train_tokens_filename, "../hBuff/dataset_prepared/%s_train.bin", input_dataset_prefix);
-    sprintf(val_tokens_filename, "../hBuff/dataset_prepared/%s_val.bin", input_dataset_prefix);
+    sprintf(train_tokens_filename, "../data/dataset_prepared/%s_train.bin", input_dataset_prefix);
+    sprintf(val_tokens_filename, "../data/dataset_prepared/%s_val.bin", input_dataset_prefix);
     DataLoader train_loader;
     dataloader_init(&train_loader, train_tokens_filename, B, T);
     DataLoader val_loader;
@@ -1708,7 +1708,7 @@ int main(int argc, char *argv[]) {
 
     // build the Tokenizer
     Tokenizer tokenizer;
-    tokenizer_init(&tokenizer, "../hBuff/dataset_prepared/gpt2_tokenizer.bin");
+    tokenizer_init(&tokenizer, "../data/dataset_prepared/gpt2_tokenizer.bin");
 
     // some memory for generating samples from the model
     unsigned long long rng_state = 1337;

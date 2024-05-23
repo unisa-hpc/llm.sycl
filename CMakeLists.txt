@@ -9,12 +9,12 @@ project(HPC_Course_2024 CXX CUDA)
 add_compile_definitions(SPDLOG_FMT_EXTERNAL)
 add_definitions(-DLOG=${LOG_LEVEL})
 set(BASE_FLAGS
-        $<$<CONFIG:Debug>:-Wall -Wextra -Wno-unused-parameter -fno-common -g -ggdb -Wno-unknown-pragmas -fsycl -fsycl-link -fsycl-targets=nvptx64-nvidia-cuda,spir64 -Xsycl-target-backend=nvptx64-nvidia-cuda --cuda-gpu-arch=sm_80>
-        $<$<CONFIG:Release>:-Wall -Wextra -Wno-unused-parameter -fno-common -O3 -funroll-loops -Wno-unknown-pragmas -fsycl -fsycl-link -fsycl-targets=nvptx64-nvidia-cuda,spir64 -Xsycl-target-backend=nvptx64-nvidia-cuda --cuda-gpu-arch=sm_80>
+        $<$<CONFIG:Debug>:-Wall -Wextra -Wno-unused-parameter -fno-common -g -ggdb -Wno-unknown-pragmas -fsycl -fsycl-link -fsycl-targets=nvptx64-nvidia-cuda -fsycl-device-code-split=per_kernel>
+        $<$<CONFIG:Release>:-Wall -Wextra -Wno-unused-parameter -fno-common -O3 -funroll-loops -Wno-unknown-pragmas -fsycl -fsycl-link -fsycl-targets=nvptx64-nvidia-cuda -fsycl-device-code-split=per_kernel>
 )
 set(BASE_LINKER_FLAGS
-        $<$<CONFIG:Debug>:-fsycl>
-        $<$<CONFIG:Release>:-fsycl>
+        $<$<CONFIG:Debug>:-fsycl -fsycl-targets=nvptx64-nvidia-cuda -fsycl-device-code-split=per_kernel>
+        $<$<CONFIG:Release>:-fsycl -fsycl-targets=nvptx64-nvidia-cuda -fsycl-device-code-split=per_kernel>
 )
 
 find_package(GTest REQUIRED)

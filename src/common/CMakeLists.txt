@@ -7,6 +7,7 @@ target_sources(common
         ${CMAKE_CURRENT_LIST_DIR}/common.cpp
         PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}/common.h
+        ${CMAKE_CURRENT_LIST_DIR}/utils.h
 )
 target_include_directories(common
         PRIVATE

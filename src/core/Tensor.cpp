@@ -142,6 +142,9 @@ Tensor<T>::Tensor(sycl::queue &queue, Tensor &other, bool syncHostBufferWithDevi
 
 template<typename T>
 Tensor<T>::~Tensor() {
+    // Without explicitly releasing the sycl buffer, the program will crash
+    // (because sycl will try to copy stuff into hBuff which is already deleted).
+    dBuff.reset();
     delete[] hBuff;
 }
 
@@ -156,3 +159,17 @@ class llmsycl::core::Tensor<size_t>;
 
 template
 class llmsycl::core::Tensor<float>;
+
+void llmsycl::core::fillTensorWithRandomData(Tensor<float> &t) {
+    auto acc = t.getAccessorHostWrite();
+    for (size_t i = 0; i < t.getSize(); i++) {
+        acc[i] = (float) rand() / (float)RAND_MAX;
+    }
+}
+
+void llmsycl::core::fillTensorWithRandomData(Tensor<int> &t, int valUpperLimit) {
+    auto acc = t.getAccessorHostWrite();
+    for (size_t i = 0; i < t.getSize(); i++) {
+        acc[i] = rand() % valUpperLimit;
+    }
+}

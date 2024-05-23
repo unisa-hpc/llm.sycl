@@ -121,4 +121,8 @@ namespace llmsycl::core {
     template<typename TT>
     using TensorPtr = std::shared_ptr<Tensor<TT>>;
 
+    void fillTensorWithRandomData(Tensor<float> &t);
+
+    void fillTensorWithRandomData(Tensor<int> &t, int valUpperLimit);
+
 }

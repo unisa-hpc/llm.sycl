@@ -4,9 +4,9 @@ target_link_options(core PRIVATE ${BASE_LINKER_FLAGS})
 
 target_sources(core
         PRIVATE
-        ${CMAKE_CURRENT_LIST_DIR}/tensor.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/Tensor.cpp
         PUBLIC
-        ${CMAKE_CURRENT_LIST_DIR}/tensor.h
+        ${CMAKE_CURRENT_LIST_DIR}/Tensor.h
 )
 target_include_directories(core
         PRIVATE
@@ -17,5 +17,6 @@ target_include_directories(core
 )
 target_link_libraries(core
         PRIVATE
+        common
         spdlog::spdlog
 )

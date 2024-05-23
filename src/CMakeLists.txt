@@ -1,5 +1,7 @@
 add_subdirectory(common)
 add_subdirectory(core)
+add_subdirectory(model)
+add_subdirectory(kernels)
 add_subdirectory(orig)
 
 add_executable(LLM_SYCL main.cpp)
