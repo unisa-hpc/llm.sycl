@@ -7,10 +7,12 @@ target_sources(kernels
         ${CMAKE_CURRENT_LIST_DIR}/Helpers.cpp
         ${CMAKE_CURRENT_LIST_DIR}/BaseKernel.cpp
         ${CMAKE_CURRENT_LIST_DIR}/Encoder.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/LayerNorm.cpp
         PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}/Helpers.h
         ${CMAKE_CURRENT_LIST_DIR}/BaseKernel.h
         ${CMAKE_CURRENT_LIST_DIR}/Encoder.h
+        ${CMAKE_CURRENT_LIST_DIR}/LayerNorm.h
 )
 target_include_directories(kernels
         PRIVATE

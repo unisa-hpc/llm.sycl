@@ -2,8 +2,10 @@ add_subdirectory(test-sycl)
 
 add_executable(testAll
         testAll.cpp
+        unittests/testCommon.h
         unittests/testTensor.cpp
         unittests/testKernelEncode.cpp
+        unittests/testKernelLayerNorm.cpp
 )
 target_compile_options(testAll PRIVATE ${BASE_FLAGS})
 target_link_options(testAll PRIVATE ${BASE_LINKER_FLAGS})
