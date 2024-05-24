@@ -45,8 +45,8 @@ namespace llmsycl::kernels {
             addScalarParamToReport("C", C);
         }
 
-        void Launch(sycl::queue &q, int blockSize) override {
-            q.submit([&](sycl::handler &h) {
+        sycl::event Launch(sycl::queue &q, int blockSize) override {
+            auto event = q.submit([&](sycl::handler &h) {
                 auto accTnOut = tnOut.getAccessorDeviceWrite(h, offsetOut);
                 auto accTnIn = tnIn.getAccessorDeviceRead(h, offsetIn);
                 auto accTnWte = tnWte.getAccessorDeviceRead(h, offsetWte);
@@ -91,6 +91,7 @@ namespace llmsycl::kernels {
                         });
             });
             report();
+            return event;
         }
 
     private:

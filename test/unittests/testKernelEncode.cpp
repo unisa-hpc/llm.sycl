@@ -76,17 +76,14 @@ bool test() {
     core::fillTensorWithRandomData(tnWte);
     core::fillTensorWithRandomData(tnWpe);
 
-    int blockSizes[] = {32 };
+    int blockSizes[] = {32, 64, 128, 256, 512, 1024 };
     goldCpu(tnOutGold, 0, tnIn, 0, tnWte, 0, tnWpe, 0, B, T, C);
 
     for(auto blockSize: blockSizes) {
         logger->info("Testing EncoderKernel with blockSize: {}", blockSize);
 
         kernels::EncoderKernel kernel(tnOut, 0, tnIn, 0, tnWte, 0, tnWpe, 0, B, T, C);
-
-        kernel.Launch(q, blockSize);
-        q.wait_and_throw();
-        logger->info("Got past q.wait_and_throw()");
+        logger->info("BlockSize: {}, Device Time: {} ns", blockSize, kernel.LaunchBlockingAndMeasureNanoSec(q, blockSize));
 
         auto accTnOut = tnOut.getAccessorHostRead();
         auto accTnOutGold = tnOutGold.getAccessorHostRead();
