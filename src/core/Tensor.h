@@ -116,6 +116,10 @@ namespace llmsycl::core {
             });
             q.wait();
         }
+
+        sycl::buffer<T, 1> &getDeviceBuff() {
+            return *dBuff.get();
+        }
     };
 
     template<typename TT>
