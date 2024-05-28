@@ -12,7 +12,7 @@ using namespace std;
 // Create an exception handler for asynchronous SYCL exceptions
 
 
-void initSycl(sycl::queue &outQ) {
+inline void initSycl(sycl::queue &outQ) {
     auto asycExceptionHandler = [](sycl::exception_list e_list) {
         for (std::exception_ptr const &e: e_list) {
             try {
