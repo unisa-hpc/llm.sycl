@@ -11,39 +11,34 @@
 
 namespace llmsycl::kernels {
 
-    class Residual : public BaseKernel {
+    class Gelu : public BaseKernel {
         friend class sycl::handler;
 
     public:
-        Residual(
+        Gelu(
                 core::Tensor<float> &tnOutput,
                 size_t outputOffset,
-                core::Tensor<float> &tnInput1,
-                size_t input1Offset,
-                core::Tensor<float> &tnInput2,
-                size_t input2Offset,
-                int N ) :
-                BaseKernel("Residual"),
+                core::Tensor<float> &tnInput,
+                size_t inputOffset,
+                int N) :
+                BaseKernel("Gelu"),
                 tnOutput(tnOutput), outputOffset(outputOffset),
-                tnInput1(tnInput1), input1Offset(input1Offset),
-                tnInput2(tnInput2), input2Offset(input2Offset),
-                N(N)  {
+                tnInput(tnInput), inputOffset(inputOffset),
+                N(N), geluScalingFactor(std::sqrt(2.0f / M_PI)) {
 
             addTensorDetailsToReport("tnOutput", tnOutput);
-            addTensorDetailsToReport("tnInput1", tnInput1);
-            addTensorDetailsToReport("tnInput2", tnInput2);
+            addTensorDetailsToReport("tnInput", tnInput);
             addScalarParamToReport("outputOffset", outputOffset);
-            addScalarParamToReport("input1Offset", input1Offset);
-            addScalarParamToReport("input1Offset", input2Offset);
+            addScalarParamToReport("inputOffset", inputOffset);
             addScalarParamToReport("N", N);
         }
 
         sycl::event Launch(sycl::queue &q, int blockSize) override {
             auto event = q.submit([&](sycl::handler &h) {
                 auto accTnOutput = tnOutput.getAccessorDeviceWrite(h, outputOffset);
-                auto accTnInput1 = tnInput1.getAccessorDeviceRead(h, input1Offset);
-                auto accTnInput2 = tnInput2.getAccessorDeviceRead(h, input2Offset);
+                auto accTnInput = tnInput.getAccessorDeviceRead(h, inputOffset);
                 const size_t capturedN = this->N;
+                const auto capturedGeluScalingFactor = this->geluScalingFactor;
 
                 h.parallel_for(
                         sycl::nd_range<1>(
@@ -53,7 +48,11 @@ namespace llmsycl::kernels {
                         [=](sycl::nd_item<1> item) {
                             const auto idx = item.get_global_id(0);
                             if (idx < capturedN) {
-                                accTnOutput[idx] = accTnInput1[idx] + accTnInput2[idx];
+                                const float xi = accTnInput[idx];
+                                float cube = 0.044715f * xi * xi * xi;
+                                accTnOutput[idx] = 0.5f * xi * (
+                                        1.0f + sycl::tanh<float>(capturedGeluScalingFactor * (xi + cube))
+                                );
                             }
                         });
             });
@@ -64,11 +63,10 @@ namespace llmsycl::kernels {
     private:
         core::Tensor<float> &tnOutput;
         size_t outputOffset;
-        const core::Tensor<float> &tnInput1;
-        size_t input1Offset;
-        const core::Tensor<float> &tnInput2;
-        size_t input2Offset;
+        const core::Tensor<float> &tnInput;
+        size_t inputOffset;
         const int N;
+        const float geluScalingFactor;
     };
 
 
