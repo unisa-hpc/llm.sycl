@@ -81,5 +81,5 @@ inline bool test() {
 }
 
 TEST(kernelEncode, basic01) {
-    test();
+    EXPECT_TRUE(test());
 }

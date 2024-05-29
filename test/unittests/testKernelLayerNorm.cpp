@@ -44,13 +44,13 @@ void goldCpu(
             // calculate the mean
             float m = 0.0f;
             for (int i = 0; i < C; i++) {
-                m += accTnInp[inpOffset + b * T * C + t * C + i];
+                m += accTnInp[b * T * C + t * C + i];
             }
             m = m / C;
             // calculate the variance (without any bias correction)
             float v = 0.0f;
             for (int i = 0; i < C; i++) {
-                float xshift = accTnInp[inpOffset + b * T * C + t * C + i] - m;
+                float xshift = accTnInp[b * T * C + t * C + i] - m;
                 v += xshift * xshift;
             }
             v = v / C;
@@ -59,13 +59,13 @@ void goldCpu(
             // seek to the output position in out[b,t,:]
 
             for (int i = 0; i < C; i++) {
-                float n = (s * (accTnInp[inpOffset + b * T * C + t * C + i] - m)); // normalized output
-                float o = n * accTnWeight[weightOffset + i] + accTnBias[biasOffset + i]; // scale and shift it
-                accTnOut[outOffset + b * T * C + t * C + i] = o; // write
+                float n = (s * (accTnInp[b * T * C + t * C + i] - m)); // normalized output
+                float o = n * accTnWeight[i] + accTnBias[i]; // scale and shift it
+                accTnOut[b * T * C + t * C + i] = o; // write
             }
             // cache the mean and rstd for the backward pass later
-            accTnMean[meanOffset + b * T + t] = m;
-            accTnRstd[rstdOffset + b * T + t] = s;
+            accTnMean[b * T + t] = m;
+            accTnRstd[b * T + t] = s;
         }
     }
 
@@ -157,5 +157,5 @@ inline bool test() {
 }
 
 TEST(kernelLayerNorm, basic01) {
-    test();
+    EXPECT_TRUE(test());
 }
