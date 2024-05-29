@@ -126,6 +126,7 @@ namespace llmsycl::core {
     using TensorPtr = std::shared_ptr<Tensor<TT>>;
 
     void fillTensorWithRandomData(Tensor<float> &t);
+    void fillTensorWith(Tensor<float> &t, float val);
 
     void fillTensorWithRandomData(Tensor<int> &t, int valUpperLimit);
 

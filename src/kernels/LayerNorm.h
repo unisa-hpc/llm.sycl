@@ -68,13 +68,6 @@ namespace llmsycl::kernels {
                 const int capturedN = this->B * this->T;
                 const int capturedC = this->C;
 
-                const size_t capturedOffsetOut = this->outOffset;
-                const size_t capturedOffsetMean = this->meanOffset;
-                const size_t capturedOffsetRstd = this->rstdOffset;
-                const size_t capturedOffsetInp = this->inpOffset;
-                const size_t capturedOffsetWeight = this->weightOffset;
-                const size_t capturedOffsetBias = this->biasOffset;
-
                 h.parallel_for(
                         sycl::nd_range<1>(
                                 sycl::range<1>(Helpers::MakeDivisible(B * T, blockSize)),
@@ -88,13 +81,13 @@ namespace llmsycl::kernels {
                                 // calculate the mean
                                 float m = 0.0f;
                                 for (int i = 0; i < capturedC; i++) {
-                                    m += accTnInp[capturedOffsetInp + idx * capturedC + i];
+                                    m += accTnInp[idx * capturedC + i];
                                 }
                                 m = m / capturedC;
                                 // calculate the variance (without any bias correction)
                                 float v = 0.0f;
                                 for (int i = 0; i < capturedC; i++) {
-                                    float xshift = accTnInp[capturedOffsetInp + idx * capturedC + i] - m;
+                                    float xshift = accTnInp[idx * capturedC + i] - m;
                                     v += xshift * xshift;
                                 }
                                 v = v / capturedC;
@@ -103,13 +96,13 @@ namespace llmsycl::kernels {
 
 
                                 for (int i = 0; i < capturedC; i++) {
-                                    float n = (s * (accTnInp[capturedOffsetInp + idx * capturedC + i] - m)); // normalized output
-                                    float o = n * accTnWeight[capturedOffsetWeight + i] + accTnBias[capturedOffsetBias + i]; // scale and shift it
-                                    accTnOut[capturedOffsetOut + idx * capturedC + i] = o; // write
+                                    float n = (s * (accTnInp[idx * capturedC + i] - m)); // normalized output
+                                    float o = n * accTnWeight[i] + accTnBias[i]; // scale and shift it
+                                    accTnOut[idx * capturedC + i] = o; // write
                                 }
                                 // cache the mean and rstd for the backward pass later
-                                accTnMean[capturedOffsetMean + idx] = m;
-                                accTnRstd[capturedOffsetRstd + idx] = s;
+                                accTnMean[idx] = m;
+                                accTnRstd[idx] = s;
                             }
                         });
             });

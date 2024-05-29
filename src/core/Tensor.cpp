@@ -167,6 +167,13 @@ void llmsycl::core::fillTensorWithRandomData(Tensor<float> &t) {
     }
 }
 
+void llmsycl::core::fillTensorWith(Tensor<float> &t, float val) {
+    auto acc = t.getAccessorHostWrite();
+    for (size_t i = 0; i < t.getSize(); i++) {
+        acc[i] = val;
+    }
+}
+
 void llmsycl::core::fillTensorWithRandomData(Tensor<int> &t, int valUpperLimit) {
     auto acc = t.getAccessorHostWrite();
     for (size_t i = 0; i < t.getSize(); i++) {

@@ -275,14 +275,14 @@ namespace llmsycl::model {
             logger->info("[STATE] batch_size: {}, seq_len: {}", B, T);
 
             // inputs and expected outputs, only used for error checking
-            int* x = (int*)mallocCheck(B * T * sizeof(int));
-            int* y = (int*)mallocCheck(B * T * sizeof(int));
-            float* expected_logits = (float*) mallocCheck(B * T * V * sizeof(float));
+            int *x = (int *) mallocCheck(B * T * sizeof(int));
+            int *y = (int *) mallocCheck(B * T * sizeof(int));
+            float *expected_logits = (float *) mallocCheck(B * T * V * sizeof(float));
 
             // read reference information from Python
-            freadCheck(x, sizeof(int), B*T, state_file);
-            freadCheck(y, sizeof(int), B*T, state_file);
-            freadCheck(expected_logits, sizeof(float), B*T*V, state_file);
+            freadCheck(x, sizeof(int), B * T, state_file);
+            freadCheck(y, sizeof(int), B * T, state_file);
+            freadCheck(expected_logits, sizeof(float), B * T * V, state_file);
             fcloseCheck(state_file);
 
             int allok = 1;
@@ -293,7 +293,7 @@ namespace llmsycl::model {
 
         }
 
-        void feedforward(sycl::queue &q, int* inputs, int* targets, int B, int T) {
+        void feedforward(sycl::queue &q, int *inputs, int *targets, int B, int T) {
 
             // convenience parameters
             int V = vocab_size;
@@ -303,7 +303,7 @@ namespace llmsycl::model {
             int C = channels;
 
             // validate inputs, all indices must be in the range [0, V)
-            for(int i = 0; i < B * T; i++) {
+            for (int i = 0; i < B * T; i++) {
                 assert(0 <= inputs[i] && inputs[i] < V);
                 if (targets != NULL) {
                     assert(0 <= targets[i] && targets[i] < V);
@@ -311,7 +311,7 @@ namespace llmsycl::model {
             }
 
             // allocate space for all the activations if needed (done here, lazily)
-            if(!isAllocated) {
+            if (!isAllocated) {
                 // record the current B,T as well
                 batch_size = B;
                 seq_len = T;
@@ -332,16 +332,16 @@ namespace llmsycl::model {
                     act_sizes[8] = L * B * T * C; // ln2
                     act_sizes[9] = L * B * T; // ln2_mean
                     act_sizes[10] = L * B * T; // ln2_rstd
-                    act_sizes[11] = L * B * T * 4*C; // fch
-                    act_sizes[12] = L * B * T * 4*C; // fch_gelu
+                    act_sizes[11] = L * B * T * 4 * C; // fch
+                    act_sizes[12] = L * B * T * 4 * C; // fch_gelu
                     act_sizes[13] = L * B * T * C; // fcproj
                     act_sizes[14] = L * B * T * C; // residual3
                     act_sizes[15] = B * T * C; // lnf
                     act_sizes[16] = B * T; // lnf_mean
                     act_sizes[17] = B * T; // lnf_rstd
                     act_sizes[18] = B * T; // losses
-                    act_sizes[19] = L * B * T * 3*C; // qkvr
-                    act_sizes[20] = B * T * std::max(3*C, std::max(NH*T, Vp)); // output / scratch
+                    act_sizes[19] = L * B * T * 3 * C; // qkvr
+                    act_sizes[20] = B * T * std::max(3 * C, std::max(NH * T, Vp)); // output / scratch
                 }
 
                 num_activations = 0;
@@ -426,8 +426,8 @@ namespace llmsycl::model {
 
 
                 // also create memory for caching inputs and targets
-                this->inputs = std::make_unique<core::Tensor<int>>(std::vector<size_t>({(size_t)B*T}));
-                this->targets = std::make_unique<core::Tensor<int>>(std::vector<size_t>({(size_t)B*T}));
+                this->inputs = std::make_unique<core::Tensor<int>>(std::vector<size_t>({(size_t) B * T}));
+                this->targets = std::make_unique<core::Tensor<int>>(std::vector<size_t>({(size_t) B * T}));
 
             } else {
                 // validate B,T is consistent with how we've allocated the memory before
@@ -439,17 +439,23 @@ namespace llmsycl::model {
             }
 
             // copy inputs/targets to the model
-            this->inputs = std::make_unique<core::Tensor<int>>(std::vector<size_t>({(size_t)B, (size_t)T}), inputs);
-            this->targets = std::make_unique<core::Tensor<int>>(std::vector<size_t>({(size_t)B, (size_t)T}), targets);
+            this->inputs = std::make_unique<core::Tensor<int>>(std::vector<size_t>({(size_t) B, (size_t) T}), inputs);
+            this->targets = std::make_unique<core::Tensor<int>>(std::vector<size_t>({(size_t) B, (size_t) T}), targets);
 
             // forward pass
             /// Check if tensor cloning is needed here.
             ///             ParameterTensors params = model->params; // for brevity
             ///             ActivationTensors acts = model->acts;
-            float* residual;
+            float *residual;
 
             // encoding goes into residual[0]
-            kernels::EncoderKernel encoderKernel(*encoded, 0, *this->inputs, 0, *wte, 0, *wpe, 0, B, T, C);
+            kernels::EncoderKernel encoderKernel(
+                    *encoded, 0,
+                    *this->inputs, 0,
+                    *wte, 0,
+                    *wpe, 0,
+                    B, T, C
+            );
             encoderKernel.Launch(q, 512);
 
             /*
