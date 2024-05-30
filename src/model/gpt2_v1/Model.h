@@ -16,6 +16,7 @@
 #include "kernels/LayerNorm.h"
 #include "kernels/Attention.h"
 #include "kernels/Gelu.h"
+#include "orig/tokenizer.h"
 
 #define NUM_PARAMETER_TENSORS 16
 #define NUM_ACTIVATION_TENSORS 21
@@ -89,8 +90,7 @@ namespace llmsycl::model {
         size_t act_sizes[NUM_ACTIVATION_TENSORS];
         size_t num_activations;
         bool isAllocated = false;
-
-
+        constexpr static int GPT2_EOT = 50256;
     public:
 
         void loadCheckpoint(const std::string &checkpointPath) {
@@ -432,11 +432,6 @@ namespace llmsycl::model {
                 }
                 logger->info("allocated {} MiB for activations", (num_activations * sizeof(float)) >> 20);
 
-
-                // also create memory for caching inputs and targets
-                this->inputs = std::make_unique<core::Tensor<int>>(std::vector<size_t>({(size_t) B * T}));
-                this->targets = std::make_unique<core::Tensor<int>>(std::vector<size_t>({(size_t) B * T}));
-
             } else {
                 // validate B,T is consistent with how we've allocated the memory before
                 // in principle we could get more clever here in the future, for now this is safest
@@ -447,8 +442,8 @@ namespace llmsycl::model {
             }
 
             // copy inputs/targets to the model
-            this->inputs = std::make_unique<core::Tensor<int>>(std::vector<size_t>({(size_t) B, (size_t) T}), inputs);
-            this->targets = std::make_unique<core::Tensor<int>>(std::vector<size_t>({(size_t) B, (size_t) T}), targets);
+            this->inputs = std::make_unique<core::Tensor<int>>(std::vector<size_t>({(size_t) B*T}), inputs);
+            if (targets != nullptr) this->targets = std::make_unique<core::Tensor<int>>(std::vector<size_t>({(size_t) B*T}), targets);
 
             /// TODO: Check if tensor cloning is needed here.
             ///             ParameterTensors params = model->params; // for brevity
@@ -511,35 +506,35 @@ namespace llmsycl::model {
                 /// ------------------------------
 
                 // get the pointers of the weights for this layer
-                offset_ln1w += l * C;
-                offset_ln1b += l * C;
-                offset_qkvw += l * 3 * C * C;
-                offset_qkvb += l * 3 * C;
-                offset_attprojw += l * C * C;
-                offset_attprojb += l * C;
-                offset_ln2w += l * C;
-                offset_ln2b += l * C;
-                offset_fcw += l * 4 * C * C;
-                offset_fcb += l * 4 * C;
-                offset_fcprojw += l * C * 4 * C;
-                offset_fcprojb += l * C;
+                offset_ln1w = l * C;
+                offset_ln1b = l * C;
+                offset_qkvw = l * 3 * C * C;
+                offset_qkvb = l * 3 * C;
+                offset_attprojw = l * C * C;
+                offset_attprojb = l * C;
+                offset_ln2w = l * C;
+                offset_ln2b = l * C;
+                offset_fcw = l * 4 * C * C;
+                offset_fcb = l * 4 * C;
+                offset_fcprojw = l * C * 4 * C;
+                offset_fcprojb = l * C;
 
                 // get the pointers of the activations for this layer
-                offset_ln1 += l * B * T * C;
-                offset_ln1_mean += l * B * T;
-                offset_ln1_rstd += l * B * T;
-                offset_qkvr += l * B * T * 3 * C;
-                offset_atty += l * B * T * C;
-                offset_att += l * B * NH * T * T;
-                offset_attproj += l * B * T * C;
-                offset_residual2 += l * B * T * C;
-                offset_ln2 += l * B * T * C;
-                offset_ln2_mean += l * B * T;
-                offset_ln2_rstd += l * B * T;
-                offset_fch += l * B * T * 4 * C;
-                offset_fch_gelu += l * B * T * 4 * C;
-                offset_fcproj += l * B * T * C;
-                offset_residual3 += l * B * T * C;
+                offset_ln1 = l * B * T * C;
+                offset_ln1_mean = l * B * T;
+                offset_ln1_rstd = l * B * T;
+                offset_qkvr = l * B * T * 3 * C;
+                offset_atty = l * B * T * C;
+                offset_att = l * B * NH * T * T;
+                offset_attproj = l * B * T * C;
+                offset_residual2 = l * B * T * C;
+                offset_ln2 = l * B * T * C;
+                offset_ln2_mean = l * B * T;
+                offset_ln2_rstd = l * B * T;
+                offset_fch = l * B * T * 4 * C;
+                offset_fch_gelu = l * B * T * 4 * C;
+                offset_fcproj = l * B * T * C;
+                offset_residual3 = l * B * T * C;
 
                 /// ------------------------------
                 // these are only needed as scratchpads for the forward pass, but
@@ -965,5 +960,177 @@ namespace llmsycl::model {
             */
 
         }
+
+        unsigned int random_u32(unsigned long long *state) {
+            // xorshift rng: https://en.wikipedia.org/wiki/Xorshift#xorshift.2A
+            *state ^= *state >> 12;
+            *state ^= *state << 25;
+            *state ^= *state >> 27;
+            return (*state * 0x2545F4914F6CDD1Dull) >> 32;
+        }
+
+        void inference() {
+            auto asycExceptionHandler = [](sycl::exception_list e_list) {
+                for (std::exception_ptr const &e: e_list) {
+                    try {
+                        std::rethrow_exception(e);
+                    }
+                    catch (std::exception const &e) {
+                        logger->error("Failure: {}", e.what());
+                        std::terminate();
+                    }
+                }
+            };
+            auto sycl_queue = sycl::queue(sycl::default_selector_v, asycExceptionHandler, sycl::property::queue::enable_profiling());
+            logger->info("SYCL queue initialized.");
+            logger->info("Device Name: {}", sycl_queue.get_device().get_info<sycl::info::device::name>());
+            logger->info("Global Memory: {}", sycl_queue.get_device().get_info<sycl::info::device::global_mem_size>());
+            logger->info("Local Memory: {}", sycl_queue.get_device().get_info<sycl::info::device::local_mem_size>());
+            logger->info("CUs: {}", sycl_queue.get_device().get_info<sycl::info::device::max_compute_units>());
+
+
+            // read in the (optional) command line arguments
+            const char* train_data_pattern = "../data/dataset_prepared/tiny_shakespeare_train.bin";
+            const char* val_data_pattern = "../data/dataset_prepared/tiny_shakespeare_val.bin";
+            const char* output_log_file = NULL;
+            int B = 1; // batch size
+            int T = 1024; // sequence length max
+            float learning_rate = 3e-4f;
+            int val_loss_every = 20; // every how many steps do we eval validation loss?
+            int val_max_steps = 20; // how many batches max do we eval for validation loss?
+            int sample_every = 20; // every how many steps to do inference?
+            int genT = 5; // number of steps of inference we will do
+            /*
+            for (int i = 1; i < argc; i+=2) {
+                if (i + 1 >= argc) { error_usage(); } // must have arg after flag
+                if (argv[i][0] != '-') { error_usage(); } // must start with dash
+                if (strlen(argv[i]) != 2) { error_usage(); } // must be -x (one dash, one letter)
+                // read in the args
+                if (argv[i][1] == 'i') { train_data_pattern = argv[i+1]; }
+                else if (argv[i][1] == 'j') { val_data_pattern = argv[i+1]; }
+                else if (argv[i][1] == 'o') { output_log_file = argv[i+1]; }
+                else if (argv[i][1] == 'b') { B = atoi(argv[i+1]); }
+                else if (argv[i][1] == 't') { T = atoi(argv[i+1]); }
+                else if (argv[i][1] == 'l') { learning_rate = atof(argv[i+1]); }
+                else if (argv[i][1] == 'v') { val_loss_every = atoi(argv[i+1]); }
+                else if (argv[i][1] == 'm') { val_max_steps = atoi(argv[i+1]); }
+                else if (argv[i][1] == 's') { sample_every = atoi(argv[i+1]); }
+                else if (argv[i][1] == 'g') { genT = atoi(argv[i+1]); }
+                else { error_usage(); }
+            }
+            */
+            logger->info("+-----------------------+----------------------------------------------------+\n");
+            logger->info("| Parameter             | Value                                              |\n");
+            logger->info("+-----------------------+----------------------------------------------------+\n");
+            logger->info("| train data pattern    | {} |\n", train_data_pattern);
+            logger->info("| val data pattern      | {} |\n", val_data_pattern);
+            logger->info("| output log file       | {} |\n", output_log_file == NULL ? "NULL" : output_log_file);
+            logger->info("| batch size B          | {} |\n", B);
+            logger->info("| sequence length T     | {} |\n", T);
+            logger->info("| learning rate         | {} |\n", learning_rate);
+            logger->info("| val_loss_every        | {} |\n", val_loss_every);
+            logger->info("| val_max_steps         | {} |\n", val_max_steps);
+            logger->info("| sample_every          | {} |\n", sample_every);
+            logger->info("| genT                  | {} |\n", genT);
+            logger->info("+-----------------------+----------------------------------------------------+\n");
+
+            // build the GPT-2 model from a checkpoint
+
+            loadCheckpoint("../data/dataset_prepared/gpt2_124M.bin");
+            logger->info("| max_sequence_length T | {} |\n", max_seq_len);
+            logger->info("| vocab_size V          | {} |\n", vocab_size);
+            logger->info("| padded_vocab_size Vp  | {} |\n", padded_vocab_size);
+            logger->info("| num_layers L          | {} |\n", num_layers);
+            logger->info("| num_heads NH          | {} |\n", num_heads);
+            logger->info("| channels C            | {} |\n", channels);
+            logger->info("| num_parameters        | {} |\n", num_parameters);
+            logger->info("+-----------------------+----------------------------------------------------+\n");
+
+            // build DataLoaders for both train and val
+            /*
+            DataLoader train_loader, val_loader;
+            dataloader_init(&train_loader, train_data_pattern, B, T, 0, 1);
+            dataloader_init(&val_loader, val_data_pattern, B, T, 0, 1);
+            int train_num_batches = train_loader.num_tokens / (B*T); // let's do 1 epoch by default for now
+            int val_num_batches = val_loader.num_tokens / (B*T);
+            if (val_num_batches > val_max_steps) { val_num_batches = val_max_steps; }
+            printf("| train_num_batches     | %-50d |\n", train_num_batches);
+            printf("| val_num_batches       | %-50d |\n", val_num_batches);
+            printf("+-----------------------+----------------------------------------------------+\n");
+
+            // print model parameter allocations from gpt2_build_from_checkpoint down here to not mess up our table above
+            printf("allocated %d MiB for model parameters\n", (int)round(model.num_parameters * sizeof(float) / (1024 * 1024)));
+             */
+
+            // build the Tokenizer
+            Tokenizer tokenizer;
+            tokenizer_init(&tokenizer, "../data/dataset_prepared/gpt2_tokenizer.bin");
+
+            // some memory for generating samples from the model
+            unsigned long long rng_state = 1337;
+            int* gen_tokens = (int*)mallocCheck(B * T * sizeof(int));
+            float* cpu_logits = (float*)mallocCheck(vocab_size * sizeof(float));
+
+            // fill up gen_tokens with the GPT2_EOT, which kicks off the generation
+            for(int i = 0; i < B * T; ++i) {
+                gen_tokens[i] = GPT2_EOT;
+            }
+            // now sample from the model autoregressively
+            logger->info("generating:\n---\n");
+            for (int t = 1; t < genT; t++) {
+                // note that inference is very wasteful here because for each token
+                // we re-calculate the forward pass for all of (B,T) positions from scratch
+                // but the inference here is just for sanity checking anyway
+                // and we can maybe optimize a bit more later, with careful tests
+                feedforward(sycl_queue, gen_tokens, NULL, B, T);
+                // furthermore, below we're only using b=0 (i.e. the first row) of all B rows
+                // we're in principle running B "inference streams" in parallel here
+                // only using position 0 because it's a bit faster (copy less probs from GPU -> CPU)
+                // get the V-dimensional vector probs[0, t-1, :]
+                output->forceD2H();
+
+                // move probs back to CPU and sample (note we only move the first vocab_size logits, ignoring the padding)
+                auto accHostLogits = output->getAccessorHostRead((t - 1) * padded_vocab_size); // We have to read only `vocab_size` words
+
+
+
+
+
+                float coin = (random_u32(&rng_state) >> 8) / 16777216.0f;
+                int next_token;
+                {
+                    ///TODO: int next_token = sample_softmax(cpu_logits, model.config.vocab_size, coin);
+
+                    // sample index from logits (converted to probabilities using softmax)
+                    // coin is a random number in [0, 1), usually from random_f32()
+                    double norm = 0;
+                    for (int i = 0; i < vocab_size; i++) {
+                        norm += expf(accHostLogits[i]);
+                    }
+                    // instead of dividing all exp(logits), we can just multiply coin.
+                    coin *= norm;
+                    float cdf = 0.0f;
+                    next_token = vocab_size-1; // in case of rounding errors
+                    for (int i = 0; i < vocab_size; i++) {
+                        cdf += expf(accHostLogits[i]);
+                        if (coin < cdf) {
+                            next_token = i;
+                            break;
+                        }
+                    }
+                }
+                gen_tokens[t] = next_token;
+                // print the generated token, either using the Tokenizer or a fallback
+                if (tokenizer.init_ok) {
+                    const char* token_str = tokenizer_decode(&tokenizer, next_token);
+                    safe_printf(token_str);
+                } else {
+                    // fall back to printing the token id
+                    printf("%d ", next_token);
+                }
+                fflush(stdout);
+            }
+        }
+
     };
 }

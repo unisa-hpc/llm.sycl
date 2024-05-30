@@ -41,6 +41,7 @@ target_link_libraries(kernels
         core
         spdlog::spdlog
         sycl
+        PUBLIC
         onemkl
         onemkl_blas
         onemkl_dft

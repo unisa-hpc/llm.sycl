@@ -47,68 +47,72 @@ namespace llmsycl::kernels {
         }
 
         sycl::event Launch(sycl::queue &q, int blockSize) override {
-            auto event = q.submit([&](sycl::handler &h) {
-                auto accTnOut = tnOut.getAccessorDeviceWrite(h, outOffset);
-                auto accTnInp = tnInp.getAccessorDeviceRead(h, inpOffset);
-                auto accTnWeight = tnWeight.getAccessorDeviceRead(h, weightOffset);
-                auto accTnBias = tnBias.getAccessorDeviceRead(h, biasOffset);
+            sycl::event event;
+            {
+                // inp is (B*T, C)  : transpose (col-mjr) : k=C, n=B*T
+                // weight is (OC, C) : transpose : transpose (col-mjr) : m=OC, k=C
+                // out is (B*T, OC)
 
-                const int capturedB = this->B;
-                const int capturedT = this->T;
-                const int capturedC = this->C;
-                const int capturedOC = this->OC;
+                /**
+                 * We need "weight.T @ inp"
+                 * Gemm does:
+                C := alpha*op(A)*op(B) + beta*C
+                 op(X) is one of op(X) = X or op(X) = X', or op(X) = conjg(X')
+                 alpha and beta are scalars
+                 A, B and C are matrices:
+                    A is an m by k matrix
+                    B is a k by n matrix
+                    C is an m by n matrix
+                */
+                auto subBufW = sycl::buffer(
+                        tnWeight.getDeviceBuff(),
+                        sycl::id<1>(weightOffset),
+                        sycl::range<1>(C * OC)
+                );
+                auto subBufI = sycl::buffer(
+                        tnInp.getDeviceBuff(),
+                        sycl::id<1>(inpOffset),
+                        sycl::range<1>(B * T * C)
+                );
+                auto subBufO = sycl::buffer(
+                        tnOut.getDeviceBuff(),
+                        sycl::id<1>(outOffset),
+                        sycl::range<1>(B * T * OC)
+                );
+                const float alpha = 1.0f;
+                const float beta = 0.0f;
+                //cublasSgemm(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N, OC, B*T, C, &alpha, weight, C, inp, C, &beta, out, OC));
+                oneapi::mkl::blas::column_major::gemm(
+                        q,
+                        oneapi::mkl::transpose::trans,
+                        oneapi::mkl::transpose::nontrans,
+                        OC, B * T, C,  //m, n, k
+                        alpha,
+                        subBufW,
+                        C,
+                        subBufI,
+                        C,
+                        beta,
+                        subBufO,
+                        OC
+                );
+            }
 
-                {
-                    // inp is (B*T, C)  : transpose (col-mjr) : k=C, n=B*T
-                    // weight is (OC, C) : transpose : transpose (col-mjr) : m=OC, k=C
-                    // out is (B*T, OC)
+            if (hasBias) {
+                event = q.submit([&](sycl::handler &h) {
+                    auto accTnOut = tnOut.getAccessorDeviceWrite(h, outOffset);
+                    auto accTnInp = tnInp.getAccessorDeviceRead(h, inpOffset);
+                    auto accTnWeight = tnWeight.getAccessorDeviceRead(h, weightOffset);
+                    auto accTnBias = tnBias.getAccessorDeviceRead(h, biasOffset);
 
-                    /**
-                     * We need "weight.T @ inp"
-                     * Gemm does:
-                    C := alpha*op(A)*op(B) + beta*C
-                     op(X) is one of op(X) = X or op(X) = X', or op(X) = conjg(X')
-                     alpha and beta are scalars
-                     A, B and C are matrices:
-                        A is an m by k matrix
-                        B is a k by n matrix
-                        C is an m by n matrix
-                    */
-                    auto subBufW = sycl::buffer(
-                            tnWeight.getDeviceBuff(),
-                            sycl::id<1>(weightOffset),
-                            sycl::range<1>(C * OC)
-                    );
-                    auto subBufI = sycl::buffer(
-                            tnInp.getDeviceBuff(),
-                            sycl::id<1>(inpOffset),
-                            sycl::range<1>(B * T * C)
-                    );
-                    auto subBufO = sycl::buffer(
-                            tnOut.getDeviceBuff(),
-                            sycl::id<1>(outOffset),
-                            sycl::range<1>(B * T * OC)
-                    );
-                    const float alpha = 1.0f;
-                    const float beta = 0.0f;
-                    //cublasSgemm(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N, OC, B*T, C, &alpha, weight, C, inp, C, &beta, out, OC));
-                    oneapi::mkl::blas::column_major::gemm(
-                            q,
-                            oneapi::mkl::transpose::trans,
-                            oneapi::mkl::transpose::nontrans,
-                            OC, B * T, C,  //m, n, k
-                            alpha,
-                            subBufW,
-                            C,
-                            subBufI,
-                            C,
-                            beta,
-                            subBufO,
-                            OC
-                    );
-                }
+                    const int capturedB = this->B;
+                    const int capturedT = this->T;
+                    const int capturedC = this->C;
+                    const int capturedOC = this->OC;
 
-                if (hasBias) {
+
+
+
                     /*
                     int block_size = sqrt_block_size * sqrt_block_size;
                     int grid_size = ceil_div(OC * B * T, block_size);
@@ -129,8 +133,9 @@ namespace llmsycl::kernels {
                                 }
                             }
                     );
-                }
-            });
+
+                });
+            }
             report();
             return event;
         }

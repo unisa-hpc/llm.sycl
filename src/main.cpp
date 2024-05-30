@@ -7,6 +7,7 @@
 
 #include "argparse/argparse.hpp"
 #include "common/common.h"
+#include "model/gpt2_v1/Model.h"
 
 int main(int argc, char *argv[]) {
     initLogger();
@@ -30,4 +31,10 @@ int main(int argc, char *argv[]) {
     logger->debug("IsSilent: {}", globalIsSilent);
     logger->debug("BatchSize: {}", globalBatchsize);
     logger->info("Sycl version of llm.c for HPC course 2024 (Prof. B. Cosenza).");
+
+    // Create a GPT2 model
+    llmsycl::model::Model gpt2;
+    gpt2.inference();
+
+
 }

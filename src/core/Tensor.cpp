@@ -35,7 +35,7 @@ std::vector<size_t> Tensor<T>::maskZeros(const std::vector<size_t> &vec) {
 }
 
 template<typename T>
-std::string Tensor<T>::getShapeStr() const{
+std::string Tensor<T>::getShapeStr() const {
     std::string s;
     for (auto d: getShape()) {
         s += std::to_string(d) + ", ";
@@ -163,7 +163,7 @@ class llmsycl::core::Tensor<float>;
 void llmsycl::core::fillTensorWithRandomData(Tensor<float> &t) {
     auto acc = t.getAccessorHostWrite();
     for (size_t i = 0; i < t.getSize(); i++) {
-        acc[i] = (float) rand() / (float)RAND_MAX;
+        acc[i] = (float) rand() / (float) RAND_MAX;
     }
 }
 
