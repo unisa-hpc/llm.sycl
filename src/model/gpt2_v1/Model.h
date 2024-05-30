@@ -8,6 +8,14 @@
 #include "common/utils.h"
 #include "common/common.h"
 #include "kernels/Encoder.h"
+#include "kernels/Residual.h"
+#include "kernels/MatmulBias.h"
+#include "kernels/Unpermute.h"
+#include "kernels/Permute.h"
+#include "kernels/Softmax.h"
+#include "kernels/LayerNorm.h"
+#include "kernels/Attention.h"
+#include "kernels/Gelu.h"
 
 #define NUM_PARAMETER_TENSORS 16
 #define NUM_ACTIVATION_TENSORS 21
@@ -442,11 +450,9 @@ namespace llmsycl::model {
             this->inputs = std::make_unique<core::Tensor<int>>(std::vector<size_t>({(size_t) B, (size_t) T}), inputs);
             this->targets = std::make_unique<core::Tensor<int>>(std::vector<size_t>({(size_t) B, (size_t) T}), targets);
 
-            // forward pass
-            /// Check if tensor cloning is needed here.
+            /// TODO: Check if tensor cloning is needed here.
             ///             ParameterTensors params = model->params; // for brevity
             ///             ActivationTensors acts = model->acts;
-            float *residual;
 
             // encoding goes into residual[0]
             kernels::EncoderKernel encoderKernel(
@@ -458,62 +464,487 @@ namespace llmsycl::model {
             );
             encoderKernel.Launch(q, 512);
 
-            /*
-            for (int l = 0; l < L; l++) {
+            size_t
+                    offset_ln1w = 0,
+                    offset_ln1b = 0,
+                    offset_qkvw = 0,
+                    offset_qkvb = 0,
+                    offset_attprojw = 0,
+                    offset_attprojb = 0,
+                    offset_ln2w = 0,
+                    offset_ln2b = 0,
+                    offset_fcw = 0,
+                    offset_fcb = 0,
+                    offset_fcprojw = 0,
+                    offset_fcprojb = 0;
 
-                residual = l == 0 ? encoded : residual3 + (l-1) * B * T * C;
+            size_t
+                    offset_ln1 = 0,
+                    offset_ln1_mean = 0,
+                    offset_ln1_rstd = 0,
+                    offset_qkvr = 0,
+                    offset_atty = 0,
+                    offset_att = 0,
+                    offset_attproj = 0,
+                    offset_residual2 = 0,
+                    offset_ln2 = 0,
+                    offset_ln2_mean = 0,
+                    offset_ln2_rstd = 0,
+                    offset_fch = 0,
+                    offset_fch_gelu = 0,
+                    offset_fcproj = 0,
+                    offset_residual3 = 0;
+
+            core::Tensor<float> *residual;
+            size_t residual_offset = 0;
+
+            for (int l = 0; l < L; l++) {
+                /// ------------------------------
+                residual = l == 0 ? encoded.get() : residual3.get();
+                if (l >= 2) {
+                    // This is the original addressing:
+                    //      residual = l == 0 ? acts.encoded : acts.residual3 + (l-1) * B * T * C;
+                    // So, up until l==1, residual_offset should be zero;
+                    // In short, for l==2 and onwards, we can pile-up the offset each time.
+                    residual_offset += B * T * C;
+                }
+                /// ------------------------------
 
                 // get the pointers of the weights for this layer
-                float* l_ln1w = params.ln1w + l * C;
-                float* l_ln1b = params.ln1b + l * C;
-                float* l_qkvw = params.qkvw + l * 3*C * C;
-                float* l_qkvb = params.qkvb + l * 3*C;
-                float* l_attprojw = params.attprojw + l * C * C;
-                float* l_attprojb = params.attprojb + l * C;
-                float* l_ln2w = params.ln2w + l * C;
-                float* l_ln2b = params.ln2b + l * C;
-                float* l_fcw = params.fcw + l * 4*C * C;
-                float* l_fcb = params.fcb + l * 4*C;
-                float* l_fcprojw = params.fcprojw + l * C * 4*C;
-                float* l_fcprojb = params.fcprojb + l * C;
+                offset_ln1w += l * C;
+                offset_ln1b += l * C;
+                offset_qkvw += l * 3 * C * C;
+                offset_qkvb += l * 3 * C;
+                offset_attprojw += l * C * C;
+                offset_attprojb += l * C;
+                offset_ln2w += l * C;
+                offset_ln2b += l * C;
+                offset_fcw += l * 4 * C * C;
+                offset_fcb += l * 4 * C;
+                offset_fcprojw += l * C * 4 * C;
+                offset_fcprojb += l * C;
 
                 // get the pointers of the activations for this layer
-                float* l_ln1 = ln1 + l * B * T * C;
-                float* l_ln1_mean = acts.ln1_mean + l * B * T;
-                float* l_ln1_rstd = acts.ln1_rstd + l * B * T;
-                float* l_qkvr = acts.qkvr + l * B * T * 3*C;
-                float* l_atty = acts.atty + l * B * T * C;
-                float* l_att = acts.att + l * B * NH * T * T;
-                float* l_attproj = acts.attproj + l * B * T * C;
-                float* l_residual2 = acts.residual2 + l * B * T * C;
-                float* l_ln2 = acts.ln2 + l * B * T * C;
-                float* l_ln2_mean = acts.ln2_mean + l * B * T;
-                float* l_ln2_rstd = acts.ln2_rstd + l * B * T;
-                float* l_fch = acts.fch + l * B * T * 4*C;
-                float* l_fch_gelu = acts.fch_gelu + l * B * T * 4*C;
-                float* l_fcproj = acts.fcproj + l * B * T * C;
-                float* l_residual3 = acts.residual3 + l * B * T * C;
+                offset_ln1 += l * B * T * C;
+                offset_ln1_mean += l * B * T;
+                offset_ln1_rstd += l * B * T;
+                offset_qkvr += l * B * T * 3 * C;
+                offset_atty += l * B * T * C;
+                offset_att += l * B * NH * T * T;
+                offset_attproj += l * B * T * C;
+                offset_residual2 += l * B * T * C;
+                offset_ln2 += l * B * T * C;
+                offset_ln2_mean += l * B * T;
+                offset_ln2_rstd += l * B * T;
+                offset_fch += l * B * T * 4 * C;
+                offset_fch_gelu += l * B * T * 4 * C;
+                offset_fcproj += l * B * T * C;
+                offset_residual3 += l * B * T * C;
+
+                /// ------------------------------
                 // these are only needed as scratchpads for the forward pass, but
                 // need not be stored for backward
-                float* scratch = acts.output;
+                core::Tensor<float> *scratch = output.get();
+                /// ------------------------------
 
                 // now do the forward pass
-                layernorm_forward(l_ln1, l_ln1_mean, l_ln1_rstd, residual, l_ln1w, l_ln1b, B, T, C);
-                matmul_forward_cublaslt(scratch, l_ln1, l_qkvw, l_qkvb, B, T, C, 3*C);
-                attention_forward(l_atty, l_qkvr, l_att, scratch, B, T, C, NH);
-                matmul_forward_cublaslt(l_attproj, l_atty, l_attprojw, l_attprojb, B, T, C, C);
-                residual_forward(l_residual2, residual, l_attproj, B*T*C);
-                layernorm_forward(l_ln2, l_ln2_mean, l_ln2_rstd, l_residual2, l_ln2w, l_ln2b, B, T, C);
-                matmul_forward_cublaslt(l_fch, l_ln2, l_fcw, l_fcb, B, T, C, 4*C);
-                gelu_forward(l_fch_gelu, l_fch, B*T*4*C);
-                matmul_forward_cublaslt(l_fcproj, l_fch_gelu, l_fcprojw, l_fcprojb, B, T, 4*C, C);
-                residual_forward(l_residual3, l_residual2, l_fcproj, B*T*C);
+                {
+                    /*
+                    void layernorm_forward(
+                            float* out,
+                            float* mean,
+                            float* rstd,
+                            float* inp,
+                            float* weight,
+                            float* bias,
+                            int B, int T, int C)
+                    layernorm_forward(
+                            l_ln1,
+                            l_ln1_mean,
+                            l_ln1_rstd,
+                            residual,
+                            l_ln1w,
+                            l_ln1b,
+                            B, T, C);
+
+                    LayerNorm(
+                            core::Tensor<float> &tnOut,
+                            size_t outOffset,
+                            core::Tensor<float> &tnMean,
+                            size_t meanOffset,
+                            core::Tensor<float> &tnRstd,
+                            size_t rstdOffset,
+                            core::Tensor<float> &tnInp,
+                            size_t inpOffset,
+                            core::Tensor<float> &tnWeight,
+                            size_t weightOffset,
+                            core::Tensor<float> &tnBias,
+                            size_t biasOffset,
+                            int B, int T, int C
+                    )
+                    */
+                    kernels::LayerNorm kernel(
+                            *ln1, offset_ln1,
+                            *ln1_mean, offset_ln1_mean,
+                            *ln1_rstd, offset_ln1_rstd,
+                            *residual, residual_offset,
+                            *ln1w, offset_ln1w,
+                            *ln1b, offset_ln1b,
+                            B, T, C
+                    );
+                    kernel.Launch(q, 512);
+                }
+
+                {
+                    /*
+                    void matmul_forward_cublaslt(
+                            float* out,
+                            float* inp,
+                            float* weight,
+                            float* bias,
+                            int B, int T, int C, int OC);
+                    matmul_forward_cublaslt(
+                            scratch,
+                            l_ln1,
+                            l_qkvw,
+                            l_qkvb,
+                            B, T, C, 3 * C);
+                    MatmulBias(
+                            core::Tensor<float> &tnOut,
+                            size_t outOffset,
+                            core::Tensor<float> &tnInp,
+                            size_t inpOffset,
+                            core::Tensor<float> &tnWeight,
+                            size_t weightOffset,
+                            core::Tensor<float> &tnBias,
+                            size_t biasOffset,
+                            int B, int T, int C, int OC,
+                            bool hasBias = true
+                    )
+                    */
+                    kernels::MatmulBias kernel(
+                            *scratch, 0,
+                            *ln1, offset_ln1,
+                            *qkvw, offset_qkvw,
+                            *qkvb, offset_qkvb,
+                            B, T, C, 3 * C
+                    );
+                    kernel.Launch(q, 512);
+                }
+
+                {
+                    /*
+                    void attention_forward(
+                            float* out,
+                            float* qkvr,
+                            float* att,
+                            float* inp,
+                            int B, int T, int C, int NH);
+
+                     attention_forward(l_atty, l_qkvr, l_att, scratch, B, T, C, NH);
+
+                     Attention(
+                            core::Tensor<float> &tnOut,
+                            size_t outOffset,
+                            core::Tensor<float> &tnQkvr,
+                            size_t qkvrOffset,
+                            core::Tensor<float> &tnAtt,
+                            size_t attOffset,
+                            core::Tensor<float> &tnInp,
+                            size_t inpOffset,
+                            int B, int T, int C, int NH,
+                            int blockSizeSoftMax
+                    )
+                    */
+
+                    kernels::Attention kernel(
+                            *atty, offset_atty,
+                            *qkvr, offset_qkvr,
+                            *att, offset_att,
+                            *scratch, 0,
+                            B, T, C, NH, 512);
+                    kernel.Launch(q, 512);
+                }
+
+                {
+                    /*
+                    void matmul_forward_cublaslt(
+                            float* out,
+                            float* inp,
+                            float* weight,
+                            float* bias,
+                            int B, int T, int C, int OC);
+                    matmul_forward_cublaslt(l_attproj, l_atty, l_attprojw, l_attprojb, B, T, C, C)
+                    MatmulBias(
+                            core::Tensor<float> &tnOut,
+                            size_t outOffset,
+                            core::Tensor<float> &tnInp,
+                            size_t inpOffset,
+                            core::Tensor<float> &tnWeight,
+                            size_t weightOffset,
+                            core::Tensor<float> &tnBias,
+                            size_t biasOffset,
+                            int B, int T, int C, int OC,
+                            bool hasBias = true
+                    )
+                    */
+                    kernels::MatmulBias kernel(
+                            *attproj, offset_attproj,
+                            *atty, offset_atty,
+                            *attprojw, offset_attprojw,
+                            *attprojb, offset_attprojb,
+                            B, T, C, C
+                    );
+                    kernel.Launch(q, 512);
+                }
+
+                {
+                    /*
+                    void residual_forward(float* out, float* inp1, float* inp2, int N);
+                    residual_forward(l_residual2, residual, l_attproj, B * T * C);
+                    Residual(
+                            core::Tensor<float> &tnOutput,
+                            size_t outputOffset,
+                            core::Tensor<float> &tnInput1,
+                            size_t input1Offset,
+                            core::Tensor<float> &tnInput2,
+                            size_t input2Offset,
+                            int N );
+                     */
+                    kernels::Residual kernel(
+                            *residual2, offset_residual2,
+                            *residual, residual_offset,
+                            *attproj, offset_attproj,
+                            B * T * C);
+                    kernel.Launch(q, 512);
+                }
+
+                {
+                    /*
+                    void layernorm_forward(
+                            float* out,
+                            float* mean,
+                            float* rstd,
+                            float* inp,
+                            float* weight,
+                            float* bias,
+                            int B, int T, int C)
+                    layernorm_forward(l_ln2, l_ln2_mean, l_ln2_rstd, l_residual2, l_ln2w, l_ln2b, B, T, C);
+
+                    LayerNorm(
+                            core::Tensor<float> &tnOut,
+                            size_t outOffset,
+                            core::Tensor<float> &tnMean,
+                            size_t meanOffset,
+                            core::Tensor<float> &tnRstd,
+                            size_t rstdOffset,
+                            core::Tensor<float> &tnInp,
+                            size_t inpOffset,
+                            core::Tensor<float> &tnWeight,
+                            size_t weightOffset,
+                            core::Tensor<float> &tnBias,
+                            size_t biasOffset,
+                            int B, int T, int C
+                    )
+                    */
+                    kernels::LayerNorm kernel(
+                            *ln2, offset_ln2,
+                            *ln2_mean, offset_ln2_mean,
+                            *ln2_rstd, offset_ln2_rstd,
+                            *residual2, offset_residual2,
+                            *ln2w, offset_ln2w,
+                            *ln2b, offset_ln2b,
+                            B, T, C
+                    );
+                    kernel.Launch(q, 512);
+                }
+
+                {
+                    /*
+                    void matmul_forward_cublaslt(
+                            float* out,
+                            float* inp,
+                            float* weight,
+                            float* bias,
+                            int B, int T, int C, int OC);
+                    matmul_forward_cublaslt(l_fch, l_ln2, l_fcw, l_fcb, B, T, C, 4 * C);
+                    MatmulBias(
+                            core::Tensor<float> &tnOut,
+                            size_t outOffset,
+                            core::Tensor<float> &tnInp,
+                            size_t inpOffset,
+                            core::Tensor<float> &tnWeight,
+                            size_t weightOffset,
+                            core::Tensor<float> &tnBias,
+                            size_t biasOffset,
+                            int B, int T, int C, int OC,
+                            bool hasBias = true
+                    )
+                    */
+
+                    kernels::MatmulBias kernel(
+                            *fch, offset_fch,
+                            *ln2, offset_ln2,
+                            *fcw, offset_fcw,
+                            *fcb, offset_fcb,
+                            B, T, C, 4 * C
+                    );
+                    kernel.Launch(q, 512);
+                }
+
+                {
+                    /*
+                    void gelu_forward(float* out, const float* inp, int N);
+                    gelu_forward(l_fch_gelu, l_fch, B * T * 4 * C);
+                    Gelu(
+                        core::Tensor<float> &tnOutput,
+                        size_t outputOffset,
+                        core::Tensor<float> &tnInput,
+                        size_t inputOffset,
+                        int N)
+                    */
+                    kernels::Gelu kernel(
+                            *fch_gelu, offset_fch_gelu,
+                            *fch, offset_fch,
+                            B * T * 4 * C
+                    );
+                    kernel.Launch(q, 512);
+                }
+
+                {
+                    /*
+                    void matmul_forward_cublaslt(
+                            float* out,
+                            float* inp,
+                            float* weight,
+                            float* bias,
+                            int B, int T, int C, int OC);
+                    matmul_forward_cublaslt(l_fcproj, l_fch_gelu, l_fcprojw, l_fcprojb, B, T, 4 * C, C);
+                    MatmulBias(
+                            core::Tensor<float> &tnOut,
+                            size_t outOffset,
+                            core::Tensor<float> &tnInp,
+                            size_t inpOffset,
+                            core::Tensor<float> &tnWeight,
+                            size_t weightOffset,
+                            core::Tensor<float> &tnBias,
+                            size_t biasOffset,
+                            int B, int T, int C, int OC,
+                            bool hasBias = true
+                    )
+                    */
+
+                    kernels::MatmulBias kernel(
+                            *fcproj, offset_fcproj,
+                            *fch_gelu, offset_fch_gelu,
+                            *fcprojw, offset_fcprojw,
+                            *fcprojb, offset_fcprojb,
+                            B, T, 4 * C, C
+                    );
+                    kernel.Launch(q, 512);
+                }
+
+                {
+                    /*
+                    void residual_forward(float* out, float* inp1, float* inp2, int N);
+                    residual_forward(l_residual3, l_residual2, l_fcproj, B * T * C)
+                    Residual(
+                            core::Tensor<float> &tnOutput,
+                            size_t outputOffset,
+                            core::Tensor<float> &tnInput1,
+                            size_t input1Offset,
+                            core::Tensor<float> &tnInput2,
+                            size_t input2Offset,
+                            int N );
+                     */
+                    kernels::Residual kernel(
+                            *residual3, offset_residual3,
+                            *residual2, offset_residual2,
+                            *fcproj, offset_fcproj,
+                            B * T * C);
+                    kernel.Launch(q, 512);
+                }
             }
 
-            residual = acts.residual3 + (L-1) * B * T * C; // last residual is in residual3
-            layernorm_forward(acts.lnf, acts.lnf_mean, acts.lnf_rstd, residual, params.lnfw, params.lnfb, B, T, C);
-            matmul_forward_cublaslt(acts.output, acts.lnf, params.wte, NULL, B, T, C, Vp);
+            // last residual is in residual3
+            residual = residual3.get();
+            residual_offset = (L-1) * B * T * C;
 
+            {
+                /*
+                void layernorm_forward(
+                        float* out,
+                        float* mean,
+                        float* rstd,
+                        float* inp,
+                        float* weight,
+                        float* bias,
+                        int B, int T, int C)
+                layernorm_forward(acts.lnf, acts.lnf_mean, acts.lnf_rstd, residual, params.lnfw, params.lnfb, B, T, C);
+
+                LayerNorm(
+                        core::Tensor<float> &tnOut,
+                        size_t outOffset,
+                        core::Tensor<float> &tnMean,
+                        size_t meanOffset,
+                        core::Tensor<float> &tnRstd,
+                        size_t rstdOffset,
+                        core::Tensor<float> &tnInp,
+                        size_t inpOffset,
+                        core::Tensor<float> &tnWeight,
+                        size_t weightOffset,
+                        core::Tensor<float> &tnBias,
+                        size_t biasOffset,
+                        int B, int T, int C
+                )
+                */
+                kernels::LayerNorm kernel(
+                        *lnf, 0,
+                        *lnf_mean, 0,
+                        *lnf_rstd, 0,
+                        *residual, residual_offset,
+                        *lnfw, 0,
+                        *lnfb, 0,
+                        B, T, C
+                );
+                kernel.Launch(q, 512);
+            }
+
+            {
+                /*
+                void matmul_forward_cublaslt(
+                        float* out,
+                        float* inp,
+                        float* weight,
+                        float* bias,
+                        int B, int T, int C, int OC);
+                matmul_forward_cublaslt(acts.output, acts.lnf, params.wte, NULL, B, T, C, Vp);
+                MatmulBias(
+                        core::Tensor<float> &tnOut,
+                        size_t outOffset,
+                        core::Tensor<float> &tnInp,
+                        size_t inpOffset,
+                        core::Tensor<float> &tnWeight,
+                        size_t weightOffset,
+                        core::Tensor<float> &tnBias,
+                        size_t biasOffset,
+                        int B, int T, int C, int OC,
+                        bool hasBias = true
+                )
+                */
+
+                kernels::MatmulBias kernel(
+                        *output, 0,
+                        *lnf, 0,
+                        *wte, 0,
+                        *wte /* dummy, hasBias is set to false*/, 0,
+                        B, T, C, Vp,
+                        false
+                );
+                kernel.Launch(q, 512);
+            }
+
+            /*
             // also forward the cross-entropy loss function if we have the targets
             if (targets != NULL) {
                 // fused classifier: does the forward pass and first part of the backward pass
@@ -531,7 +962,7 @@ namespace llmsycl::model {
                 // if we don't have targets, we don't have loss
                 model->mean_loss = -1.0f;
             }
-             */
+            */
 
         }
     };
