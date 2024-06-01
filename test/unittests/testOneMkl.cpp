@@ -85,9 +85,9 @@ TEST(oneMKL, gemm1) {
         sizeN = tnB.getShape()[1];
         sizeK = tnA.getShape()[1];
         auto accGold = tnGold.getAccessorHostReadWrite(0);
-        auto accA = tnA.getAccessorHostRead(0);
-        auto accB = tnB.getAccessorHostRead(0);
-        auto accC = tnC.getAccessorHostRead(0);
+        auto accA = tnA.getAccessorHostReadWrite(0);
+        auto accB = tnB.getAccessorHostReadWrite(0);
+        auto accC = tnC.getAccessorHostReadWrite(0);
         for (int j = 0; j < sizeM; j++) {
             for (int i = 0; i < sizeN; i++) {
                 accGold[j * sizeN + i] = 0;

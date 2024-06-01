@@ -66,6 +66,7 @@ namespace llmsycl::kernels {
 
             // STEP 1
             // permute and separate inp from (B, T, 3, NH, HS) to 3X (B, NH, T, HS)
+            tnInp.save(0, B * T * 3 * C, "/tmp/xInp_uut.npy");
             Permute permute_kernel(
                     tnQkvr, qkvrOffset,
                     tnQkvr, qkvrOffset + 1 * B * T * C,
@@ -73,6 +74,11 @@ namespace llmsycl::kernels {
                     tnInp, inpOffset,
                     B, T, NH, HS);
             permute_kernel.Launch(q, blockSize);
+
+
+            tnQkvr.save(0*B * T * C, B * T * C, "/tmp/xq_uut.npy");
+            tnQkvr.save(1*B * T * C, B * T * C, "/tmp/xk_uut.npy");
+            tnQkvr.save(2*B * T * C, B * T * C, "/tmp/xv_uut.npy");
 
 
             // STEP 2 - Creating sub buffers needed for oneMKL.
@@ -112,13 +118,17 @@ namespace llmsycl::kernels {
             }
 
             // STEP 3 - Softmax
+
+            tnInp.save(0, B*NH*T*T, "/tmp/xa_uut.npy");
             Softmax softmax_kernel(
                     tnAtt, attOffset,
                     tnInp, inpOffset,
-                    1.0f / sqrtf((float) HS),
-                    B * NH, T
+                    1.0f / std::sqrt((float) HS),
+                    B*NH*T, T
             );
-            softmax_kernel.Launch(q, blockSizeSoftMax);
+            softmax_kernel.LaunchBlockingAndMeasureNanoSec(q, blockSizeSoftMax);
+            tnAtt.save(0, B*NH*T*T, "/tmp/xb_uut.npy");
+            std::exit(69);
 
             // STEP 4 - gemm
             {

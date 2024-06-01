@@ -44,6 +44,7 @@ namespace llmsycl::kernels {
             addScalarParamToReport("T", T);
             addScalarParamToReport("C", C);
             addScalarParamToReport("OC", OC);
+            addScalarParamToReport("hasBias", hasBias);
         }
 
         sycl::event Launch(sycl::queue &q, int blockSize) override {
@@ -100,7 +101,7 @@ namespace llmsycl::kernels {
 
             if (hasBias) {
                 event = q.submit([&](sycl::handler &h) {
-                    auto accTnOut = tnOut.getAccessorDeviceWrite(h, outOffset);
+                    auto accTnOut = tnOut.getAccessorDeviceReadWrite(h, outOffset);
                     auto accTnInp = tnInp.getAccessorDeviceRead(h, inpOffset);
                     auto accTnWeight = tnWeight.getAccessorDeviceRead(h, weightOffset);
                     auto accTnBias = tnBias.getAccessorDeviceRead(h, biasOffset);

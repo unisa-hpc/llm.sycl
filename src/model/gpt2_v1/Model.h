@@ -18,6 +18,9 @@
 #include "kernels/Gelu.h"
 #include "orig/tokenizer.h"
 
+
+//#include "DataLoader.h"
+
 #define NUM_PARAMETER_TENSORS 16
 #define NUM_ACTIVATION_TENSORS 21
 
@@ -449,6 +452,11 @@ namespace llmsycl::model {
             ///             ParameterTensors params = model->params; // for brevity
             ///             ActivationTensors acts = model->acts;
 
+
+            wte->save(0, V*C, "/tmp/c00.wte_uut.npy");
+            wpe->save(0, max_seq_len*C, "/tmp/c00.wpe_uut.npy");
+            this->inputs->save(0, B*T, "/tmp/c00.inp_uut.npy");
+
             // encoding goes into residual[0]
             kernels::EncoderKernel encoderKernel(
                     *encoded, 0,
@@ -458,6 +466,7 @@ namespace llmsycl::model {
                     B, T, C
             );
             encoderKernel.Launch(q, 512);
+            encoded->save(0, B*T*C, "/tmp/c01_uut.npy");
 
             size_t
                     offset_ln1w = 0,
@@ -503,6 +512,7 @@ namespace llmsycl::model {
                     // In short, for l==2 and onwards, we can pile-up the offset each time.
                     residual_offset += B * T * C;
                 }
+                residual->save(residual_offset, B*T*C, "/tmp/c02.l"+std::to_string(l)+"_uut.npy");
                 /// ------------------------------
 
                 // get the pointers of the weights for this layer
@@ -588,6 +598,9 @@ namespace llmsycl::model {
                             B, T, C
                     );
                     kernel.Launch(q, 512);
+                    ln1->save(offset_ln1, B*T*C, "/tmp/c03.l"+std::to_string(l)+"_uut.npy");
+                    ln1_mean->save(offset_ln1_mean, B*T, "/tmp/c04.l"+std::to_string(l)+"_uut.npy");
+                    ln1_rstd->save(offset_ln1_rstd, B*T, "/tmp/c05.l"+std::to_string(l)+"_uut.npy");
                 }
 
                 {
@@ -625,6 +638,7 @@ namespace llmsycl::model {
                             B, T, C, 3 * C
                     );
                     kernel.Launch(q, 512);
+                    scratch->save(0, B*T*(3*C), "/tmp/c06.l"+std::to_string(l)+"_uut.npy");
                 }
 
                 {
@@ -652,13 +666,19 @@ namespace llmsycl::model {
                     )
                     */
 
+                    ///TODO: Fix this kernel.
+                    /// atty and att are wrong.
+                    /// qkvr is correct.
                     kernels::Attention kernel(
                             *atty, offset_atty,
                             *qkvr, offset_qkvr,
                             *att, offset_att,
                             *scratch, 0,
-                            B, T, C, NH, 512);
+                            B, T, C, NH, 256);
                     kernel.Launch(q, 512);
+                    atty->save(offset_atty, B*T*C, "/tmp/c07.l"+std::to_string(l)+"_uut.npy");
+                    qkvr->save(offset_qkvr, B*T*(3*C), "/tmp/c08.l"+std::to_string(l)+"_uut.npy");
+                    att->save(offset_att, B * NH * T * T, "/tmp/c09.l"+std::to_string(l)+"_uut.npy");
                 }
 
                 {
@@ -981,7 +1001,7 @@ namespace llmsycl::model {
                     }
                 }
             };
-            auto sycl_queue = sycl::queue(sycl::default_selector_v, asycExceptionHandler, sycl::property::queue::enable_profiling());
+            auto sycl_queue = sycl::queue(sycl::gpu_selector_v, asycExceptionHandler, sycl::property::queue::enable_profiling());
             logger->info("SYCL queue initialized.");
             logger->info("Device Name: {}", sycl_queue.get_device().get_info<sycl::info::device::name>());
             logger->info("Global Memory: {}", sycl_queue.get_device().get_info<sycl::info::device::global_mem_size>());
@@ -999,7 +1019,7 @@ namespace llmsycl::model {
             int val_loss_every = 20; // every how many steps do we eval validation loss?
             int val_max_steps = 20; // how many batches max do we eval for validation loss?
             int sample_every = 20; // every how many steps to do inference?
-            int genT = 5; // number of steps of inference we will do
+            int genT = 64; // number of steps of inference we will do
             /*
             for (int i = 1; i < argc; i+=2) {
                 if (i + 1 >= argc) { error_usage(); } // must have arg after flag
@@ -1075,6 +1095,11 @@ namespace llmsycl::model {
             for(int i = 0; i < B * T; ++i) {
                 gen_tokens[i] = GPT2_EOT;
             }
+
+            //DataLoader dataLoader("../data/dataset_prepared/tiny_shakespeare_train.bin", B, T);
+            //dataLoader.reset();
+
+
             // now sample from the model autoregressively
             logger->info("generating:\n---\n");
             for (int t = 1; t < genT; t++) {
@@ -1087,10 +1112,10 @@ namespace llmsycl::model {
                 // we're in principle running B "inference streams" in parallel here
                 // only using position 0 because it's a bit faster (copy less probs from GPU -> CPU)
                 // get the V-dimensional vector probs[0, t-1, :]
-                output->forceD2H();
 
+                sycl_queue.wait_and_throw();
                 // move probs back to CPU and sample (note we only move the first vocab_size logits, ignoring the padding)
-                auto accHostLogits = output->getAccessorHostRead((t - 1) * padded_vocab_size); // We have to read only `vocab_size` words
+                auto accHostLogits = output->getAccessorHostReadWrite((t - 1) * padded_vocab_size); // We have to read only `vocab_size` words
 
 
 
@@ -1105,14 +1130,14 @@ namespace llmsycl::model {
                     // coin is a random number in [0, 1), usually from random_f32()
                     double norm = 0;
                     for (int i = 0; i < vocab_size; i++) {
-                        norm += expf(accHostLogits[i]);
+                        norm += std::exp(accHostLogits[i]);
                     }
                     // instead of dividing all exp(logits), we can just multiply coin.
                     coin *= norm;
                     float cdf = 0.0f;
                     next_token = vocab_size-1; // in case of rounding errors
                     for (int i = 0; i < vocab_size; i++) {
-                        cdf += expf(accHostLogits[i]);
+                        cdf += std::exp(accHostLogits[i]);
                         if (coin < cdf) {
                             next_token = i;
                             break;
@@ -1120,6 +1145,11 @@ namespace llmsycl::model {
                     }
                 }
                 gen_tokens[t] = next_token;
+
+                printf("\n");
+                for (int ii=0; ii<t+2; ii++) { printf("%d ", gen_tokens[ii]); }
+                printf("\n");
+
                 // print the generated token, either using the Tokenizer or a fallback
                 if (tokenizer.init_ok) {
                     const char* token_str = tokenizer_decode(&tokenizer, next_token);
@@ -1129,6 +1159,8 @@ namespace llmsycl::model {
                     printf("%d ", next_token);
                 }
                 fflush(stdout);
+
+                std::exit(44);
             }
         }
 

@@ -16,6 +16,7 @@
 using namespace std;
 
 int main(int argc, const char *argv[]) {
+    ::testing::InitGoogleTest(&argc, const_cast<char **>(argv));
     initLogger();
 
     argparse::ArgumentParser program("LLM_SYCL Tests");
@@ -42,7 +43,7 @@ int main(int argc, const char *argv[]) {
     logger->info("Sycl version of llm.c for HPC course 2024 (Prof. B. Cosenza).");
     logger->trace("Commencing to run all the unit tests...");
 
-    ::testing::InitGoogleTest(&argc, const_cast<char **>(argv));
+
     auto exitCode = RUN_ALL_TESTS();
 
     logger->trace("Closing.");

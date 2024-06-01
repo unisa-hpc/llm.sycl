@@ -115,6 +115,22 @@ void Tensor<T>::save(const std::string &npyFile) {
 }
 
 template<typename T>
+void Tensor<T>::save(size_t offset, size_t lenWords, const std::string &npyFile) {
+    auto hAcc = getAccessorHostReadWrite(offset);
+    std::vector<T> vec;
+    vec.resize(lenWords);
+    std::memcpy(vec.data(), hAcc, lenWords * sizeof(T));
+
+    {
+        npy::npy_data_ptr<T> d;
+        d.data_ptr = vec.data();
+        d.shape = {lenWords};
+        d.fortran_order = false;
+        npy::write_npy(npyFile, d);
+    }
+}
+
+template<typename T>
 Tensor<T>::Tensor(sycl::queue &queue, Tensor &other, bool syncHostBufferWithDevice):
         shape(other.shape),
         sizeWords(other.sizeWords) {
@@ -161,21 +177,21 @@ template
 class llmsycl::core::Tensor<float>;
 
 void llmsycl::core::fillTensorWithRandomData(Tensor<float> &t) {
-    auto acc = t.getAccessorHostWrite();
+    auto acc = t.getAccessorHostReadWrite();
     for (size_t i = 0; i < t.getSize(); i++) {
         acc[i] = (float) rand() / (float) RAND_MAX;
     }
 }
 
 void llmsycl::core::fillTensorWith(Tensor<float> &t, float val) {
-    auto acc = t.getAccessorHostWrite();
+    auto acc = t.getAccessorHostReadWrite();
     for (size_t i = 0; i < t.getSize(); i++) {
         acc[i] = val;
     }
 }
 
 void llmsycl::core::fillTensorWithRandomData(Tensor<int> &t, int valUpperLimit) {
-    auto acc = t.getAccessorHostWrite();
+    auto acc = t.getAccessorHostReadWrite();
     for (size_t i = 0; i < t.getSize(); i++) {
         acc[i] = rand() % valUpperLimit;
     }

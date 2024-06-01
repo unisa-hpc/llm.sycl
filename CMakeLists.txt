@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
 
 # CONFIGURATION
-set(LOG_LEVEL 6 CACHE STRING "0: Trace, 1: Debug, 2: Info, 3: Warn, 4: Error, 5: Critical, 6: OFF")
+set(LOG_LEVEL 0 CACHE STRING "0: Trace, 1: Debug, 2: Info, 3: Warn, 4: Error, 5: Critical, 6: OFF")
 
 set(oneMKL_ROOT /usr/local)
 set(CMAKE_CXX_COMPILER icpx)

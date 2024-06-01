@@ -80,7 +80,7 @@ namespace llmsycl::kernels {
                                         (0 * capturedNH * capturedD) +
                                         (nh_ * capturedD) +
                                         d_;
-                                accTnQ[idx] =  accTnInp[inp_idx];
+                                accTnQ[idx] = accTnInp[inp_idx];
                                 accTnK[idx] = accTnInp[inp_idx + capturedNH * capturedD];
                                 accTnV[idx] = accTnInp[inp_idx + 2 * (capturedNH * capturedD)];
                             }

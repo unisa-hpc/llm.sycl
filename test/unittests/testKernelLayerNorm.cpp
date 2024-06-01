@@ -16,7 +16,7 @@ using namespace llmsycl;
  * float* out, float* mean, float* rstd,
                        const float* inp, const float* weight, const float* bias,
  * */
-void goldCpu(
+static void goldCpu(
         core::Tensor<float> &tnOut,
         size_t outOffset,
         core::Tensor<float> &tnMean,
@@ -31,9 +31,9 @@ void goldCpu(
         size_t biasOffset,
         int B, int T, int C) {
 
-    auto accTnOut = tnOut.getAccessorHostWrite(outOffset);
-    auto accTnMean = tnMean.getAccessorHostWrite(meanOffset);
-    auto accTnRstd = tnRstd.getAccessorHostWrite(rstdOffset);
+    auto accTnOut = tnOut.getAccessorHostReadWrite(outOffset);
+    auto accTnMean = tnMean.getAccessorHostReadWrite(meanOffset);
+    auto accTnRstd = tnRstd.getAccessorHostReadWrite(rstdOffset);
     auto accTnInp = tnInp.getAccessorHostRead(inpOffset);
     auto accTnWeight = tnWeight.getAccessorHostRead(weightOffset);
     auto accTnBias = tnBias.getAccessorHostRead(biasOffset);
@@ -71,7 +71,7 @@ void goldCpu(
 
 }
 
-inline bool test() {
+static inline bool test() {
     sycl::queue q;
     prepareToTest(q);
 
@@ -124,8 +124,8 @@ inline bool test() {
         logger->info("BlockSize: {}, Device Time: {} ns", blockSize,
                      kernel.LaunchBlockingAndMeasureNanoSec(q, blockSize));
 
-        auto accTnOut = tnOut.getAccessorHostRead();
-        auto accTnOutGold = tnOutGold.getAccessorHostRead();
+        auto accTnOut = tnOut.getAccessorHostReadWrite();
+        auto accTnOutGold = tnOutGold.getAccessorHostReadWrite();
         for (int i = 0; i < B * T * C; i++) {
             if (std::abs(accTnOut[i] - accTnOutGold[i]) > 1e-5) {
                 logger->error("\tLayerNormKernel tnOut failed the verification test against the gold at index: {}", i);
@@ -134,8 +134,8 @@ inline bool test() {
         }
 
 
-        auto accTnMean = tnMean.getAccessorHostRead();
-        auto accTnMeanGold = tnMeanGold.getAccessorHostRead();
+        auto accTnMean = tnMean.getAccessorHostReadWrite();
+        auto accTnMeanGold = tnMeanGold.getAccessorHostReadWrite();
         for (int i = 0; i < B * T; i++) {
             if (std::abs(accTnMean[i] - accTnMeanGold[i]) > 1e-5) {
                 logger->error("\tLayerNormKernel tnMean failed the verification test against the gold at index: {}", i);
@@ -143,8 +143,8 @@ inline bool test() {
             }
         }
 
-        auto accTnRstd = tnRstd.getAccessorHostRead();
-        auto accTnRstdGold = tnRstdGold.getAccessorHostRead();
+        auto accTnRstd = tnRstd.getAccessorHostReadWrite();
+        auto accTnRstdGold = tnRstdGold.getAccessorHostReadWrite();
         for (int i = 0; i < B * T; i++) {
             if (std::abs(accTnRstd[i] - accTnRstdGold[i]) > 1e-5) {
                 logger->error("\tLayerNormKernel tnRstd failed the verification test against the gold at index: {}", i);

@@ -19,6 +19,7 @@ the layernorms are connected to the residuals so we += in layernorm backward.
 #include <float.h>
 #include <string.h>
 #include <unistd.h>
+#include "buf_to_npy.h"
 
 // GPU / CUDA related
 #include <cublas_v2.h>
@@ -89,6 +90,20 @@ __global__ void encoder_forward_kernel3(float4* out,
         int c4 = idx % C4;
         int ix = inp[b * T + t];
         out[b * T * C4 + t * C4 + c4] = add_float4(wte[ix * C4 + c4], wpe[t * C4 + c4]);
+    }
+}
+__global__ void encoder_forward_kernel3_float1(float* out,
+                               const int* inp, const float* wte, const float* wpe,
+                               int B, int T, int C) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int N = B * T * C;
+    if (idx < N) {
+        int bt = idx / C;
+        int b = bt / T;
+        int t = bt % T;
+        int c = idx % C;
+        int ix = inp[b * T + t];
+        out[b * T * C + t * C + c] = wte[ix * C + c] + wpe[t * C + c];
     }
 }
 
@@ -299,6 +314,31 @@ __global__ void softmax_forward_kernel5(float* out, float inv_temperature, const
         // recalculation is faster than doing the round-trip through memory.
         float ev = expf(inv_temperature * (__ldcs(x + i) - global_maxval));
         __stcs(out + idx * T + i, ev * norm);
+    }
+}
+
+__global__ void softmax_forward_kernel1_fused(float* out, float inv_temperature, const float* inp, int N, int C) {
+    // inp is (N, C)
+    // out is (N, C), each row of inp will get softmaxed
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < N) {
+        const float* inp_row = inp + i * C;
+        float* out_row = out + i * C;
+
+        float maxval = -INFINITY;
+        for (int j = 0; j < C; j++) {
+            if (inp_row[j] > maxval) {
+                maxval = inp_row[j];
+            }
+        }
+        double sum = 0.0;
+        for (int j = 0; j < C; j++) {
+            out_row[j] = expf((inp_row[j] - maxval)*inv_temperature);
+            sum += out_row[j];
+        }
+        for (int j = 0; j < C; j++) {
+            out_row[j] /= (float)sum;
+        }
     }
 }
 
@@ -623,6 +663,18 @@ void encoder_forward(float* out,
     cudaCheck(cudaGetLastError());
 }
 
+/*
+void encoder_forward(float* out,
+                     const int* inp, const float* wte, const float* wpe,
+                     int B, int T, int C) {
+    const int block_size = 512;
+    const int N = B * T * C;
+    const int grid_size = CEIL_DIV(N, block_size);
+    encoder_forward_kernel3_float1<<<grid_size, block_size>>>(out, inp, wte, wpe, B, T, C);
+    cudaCheck(cudaGetLastError());
+}
+*/
+
 void encoder_backward(float* dwte, float* dwpe,
                     const float* dout, const int* inp,
                     int B, int T, int C) {
@@ -730,14 +782,19 @@ void attention_forward(float* out, float* qkvr, float* att,
     int HS = C / NH; // head size
 
     // permute and separate inp from (B, T, 3, NH, HS) to 3X (B, NH, T, HS)
+    writeDeviceBufToNpy(inp, B * T * 3 * C, "/tmp/xInp_gold.npy");
     float *q, *k, *v;
     q = qkvr + 0 * B * T * C;
     k = qkvr + 1 * B * T * C;
     v = qkvr + 2 * B * T * C;
     int total_threads = B * NH * T * HS;
     int num_blocks = CEIL_DIV(total_threads, block_size);
-    permute_kernel<<<num_blocks, block_size>>>(q, k, v, inp, B, T, NH, HS);
+    permute_kernel<<<num_blocks, block_size>>>(q, k, v, inp, B, T, NH, HS); // int B, int N, int NH, int d
     cudaCheck(cudaGetLastError());
+
+    writeDeviceBufToNpy(q, B * T * C, "/tmp/xq_gold.npy");
+    writeDeviceBufToNpy(k, B * T * C, "/tmp/xk_gold.npy");
+    writeDeviceBufToNpy(v, B * T * C, "/tmp/xv_gold.npy");
 
     // batched matrix multiply with cuBLAS
     const float alpha = 1.0f;
@@ -746,9 +803,22 @@ void attention_forward(float* out, float* qkvr, float* att,
     cublasCheck(cublasSgemmStridedBatched(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N, T, T, HS, &alpha, k, HS, T * HS, q, HS, T * HS, &beta, preatt, T, T * T, B * NH));
 
     // multiply all elements of preatt elementwise by scale
-    float scale = 1.0 / sqrtf(HS);
+    float scale = 1.0f / sqrtf(HS);
+
+
+    writeDeviceBufToNpy(preatt, B*NH*T*T, "/tmp/xa_gold.npy");
     int grid_size = CEIL_DIV(B * NH * T * 32, softmax_block_size);
     softmax_forward_kernel5<<<grid_size, softmax_block_size>>>(att, scale, preatt, B * NH, T);
+    writeDeviceBufToNpy(att, B*NH*T*T, "/tmp/xb_gold.npy");
+    std::exit(69);
+    /*
+    int grid_size = CEIL_DIV(B * NH * T, softmax_block_size);
+    softmax_forward_kernel1_fused<<<grid_size, softmax_block_size>>>(att, scale, preatt, B*NH*T, T);
+    */
+
+
+
+
     cudaCheck(cudaGetLastError());
 
     // new approach: first cuBLAS another batched matmul
@@ -1211,11 +1281,15 @@ void gpt2_forward(GPT2 *model, int* inputs, int* targets, int B, int T) {
     ParameterTensors params = model->params; // for brevity
     ActivationTensors acts = model->acts;
     float* residual;
+    writeDeviceBufToNpy(params.wte, V*C, "/tmp/c00.wte_gold.npy");
+    writeDeviceBufToNpy(params.wpe, model->config.max_seq_len*C, "/tmp/c00.wpe_gold.npy");
+    writeDeviceBufToNpy(model->inputs, B*T, "/tmp/c00.inp_gold.npy");
     encoder_forward(acts.encoded, model->inputs, params.wte, params.wpe, B, T, C); // encoding goes into residual[0]
-
+    writeDeviceBufToNpy(acts.encoded, B*T*C, "/tmp/c01_gold.npy");
     for (int l = 0; l < L; l++) {
 
         residual = l == 0 ? acts.encoded : acts.residual3 + (l-1) * B * T * C;
+        writeDeviceBufToNpy(residual, B*T*C, "/tmp/c02.l"+std::to_string(l)+"_gold.npy");
 
         // get the pointers of the weights for this layer
         float* l_ln1w = params.ln1w + l * C;
@@ -1253,20 +1327,52 @@ void gpt2_forward(GPT2 *model, int* inputs, int* targets, int B, int T) {
 
         // now do the forward pass
         layernorm_forward(l_ln1, l_ln1_mean, l_ln1_rstd, residual, l_ln1w, l_ln1b, B, T, C);
+        writeDeviceBufToNpy(l_ln1, B*T*C, "/tmp/c03.l"+std::to_string(l)+"_gold.npy");
+        writeDeviceBufToNpy(l_ln1_mean, B*T, "/tmp/c04.l"+std::to_string(l)+"_gold.npy");
+        writeDeviceBufToNpy(l_ln1_rstd, B*T, "/tmp/c05.l"+std::to_string(l)+"_gold.npy");
+
         matmul_forward_cublaslt(scratch, l_ln1, l_qkvw, l_qkvb, B, T, C, 3*C);
+        writeDeviceBufToNpy(scratch, B*T*(3*C), "/tmp/c06.l"+std::to_string(l)+"_gold.npy");
+
         attention_forward(l_atty, l_qkvr, l_att, scratch, B, T, C, NH);
+        writeDeviceBufToNpy(l_atty, B*T*C, "/tmp/c07.l"+std::to_string(l)+"_gold.npy");
+        writeDeviceBufToNpy(l_qkvr, B*T*(3*C), "/tmp/c08.l"+std::to_string(l)+"_gold.npy");
+        writeDeviceBufToNpy(l_att, B * NH * T * T, "/tmp/c09.l"+std::to_string(l)+"_gold.npy");
+
         matmul_forward_cublaslt(l_attproj, l_atty, l_attprojw, l_attprojb, B, T, C, C);
+        writeDeviceBufToNpy(l_attproj, 0, "/tmp/c10.l"+std::to_string(l)+"_gold.npy");
+
         residual_forward(l_residual2, residual, l_attproj, B*T*C);
+        writeDeviceBufToNpy(l_residual2, 0, "/tmp/c11.l"+std::to_string(l)+"_gold.npy");
+
         layernorm_forward(l_ln2, l_ln2_mean, l_ln2_rstd, l_residual2, l_ln2w, l_ln2b, B, T, C);
+        writeDeviceBufToNpy(l_ln2, 0, "/tmp/c12.l"+std::to_string(l)+"_gold.npy");
+        writeDeviceBufToNpy(l_ln2_mean, 0, "/tmp/c13.l"+std::to_string(l)+"_gold.npy");
+        writeDeviceBufToNpy(l_ln2_rstd, 0, "/tmp/c14.l"+std::to_string(l)+"_gold.npy");
+
         matmul_forward_cublaslt(l_fch, l_ln2, l_fcw, l_fcb, B, T, C, 4*C);
+        writeDeviceBufToNpy(l_fch, 0, "/tmp/c15.l"+std::to_string(l)+"_gold.npy");
+
         gelu_forward(l_fch_gelu, l_fch, B*T*4*C);
+        writeDeviceBufToNpy(l_fch_gelu, 0, "/tmp/c16.l"+std::to_string(l)+"_gold.npy");
+
         matmul_forward_cublaslt(l_fcproj, l_fch_gelu, l_fcprojw, l_fcprojb, B, T, 4*C, C);
+        writeDeviceBufToNpy(l_fcproj, 0, "/tmp/c17.l"+std::to_string(l)+"_gold.npy");
+
         residual_forward(l_residual3, l_residual2, l_fcproj, B*T*C);
+        writeDeviceBufToNpy(l_residual3, 0, "/tmp/c18.l"+std::to_string(l)+"_gold.npy");
     }
 
     residual = acts.residual3 + (L-1) * B * T * C; // last residual is in residual3
+    writeDeviceBufToNpy(residual, 0, "/tmp/c19_gold.npy");
+
     layernorm_forward(acts.lnf, acts.lnf_mean, acts.lnf_rstd, residual, params.lnfw, params.lnfb, B, T, C);
+    writeDeviceBufToNpy(acts.lnf, 0, "/tmp/c20_gold.npy");
+    writeDeviceBufToNpy(acts.lnf_mean, 0, "/tmp/c21_gold.npy");
+    writeDeviceBufToNpy(acts.lnf_rstd, 0, "/tmp/c22_gold.npy");
+
     matmul_forward_cublaslt(acts.output, acts.lnf, params.wte, NULL, B, T, C, Vp);
+    writeDeviceBufToNpy(acts.output, 0, "/tmp/c23_gold.npy");
 
     // also forward the cross-entropy loss function if we have the targets
     if (targets != NULL) {
@@ -1722,6 +1828,7 @@ int main(int argc, char *argv[]) {
         int last_step = step == train_num_batches;
 
         // once in a while estimate the validation loss
+        /*
         if (step % val_loss_every == 0 || last_step) {
             float val_loss = 0.0f;
             dataloader_reset(&val_loader);
@@ -1734,9 +1841,10 @@ int main(int argc, char *argv[]) {
             printf("val loss %f\n", val_loss);
             logger_log_val(&logger, step, val_loss);
         }
+        */
 
         // once in a while do model inference to print generated text
-        if (step > 0 && step % sample_every == 0 || last_step) {
+        if (step == 0 && step % sample_every == 0 || last_step) {
             // fill up gen_tokens with the GPT2_EOT, which kicks off the generation
             for(int i = 0; i < B * T; ++i) {
                 gen_tokens[i] = GPT2_EOT;
@@ -1759,6 +1867,11 @@ int main(int argc, char *argv[]) {
                 float coin = random_f32(&rng_state);
                 int next_token = sample_softmax(cpu_logits, model.config.vocab_size, coin);
                 gen_tokens[t] = next_token;
+
+                printf("\n");
+                for (int ii=0; ii<t+2; ii++) { printf("%d ", gen_tokens[ii]); }
+                printf("\n");
+
                 // print the generated token, either using the Tokenizer or a fallback
                 if (tokenizer.init_ok) {
                     const char* token_str = tokenizer_decode(&tokenizer, next_token);
@@ -1768,8 +1881,11 @@ int main(int argc, char *argv[]) {
                     printf("%d ", next_token);
                 }
                 fflush(stdout);
+                std::exit(44);
             }
             printf("\n---\n");
+
+
         }
 
         // bit confusing: we want to make sure to eval and sample on 0th iteration

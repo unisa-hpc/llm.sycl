@@ -78,7 +78,7 @@ namespace llmsycl::kernels {
                             /* out: B x T x C
                              * inp: B x T
                              * wte: V x C
-                             * wpe: T x C
+                             * wpe: maxT x C
                              */
                             if (idx < bound) {
                                 const int bt = idx / capturedC;
@@ -86,7 +86,8 @@ namespace llmsycl::kernels {
                                 const int t = bt % capturedT;
                                 const int c = idx % capturedC;
                                 const int ix = accTnIn[b * capturedT + t];
-                                accTnOut[idx] = accTnWte[ix * capturedC + c] + accTnWpe[t * capturedC + c];
+                                //out[b * T * C4 + t * C4 + c4] = add_float4(wte[ix * C4 + c4], wpe[t * C4 + c4]);
+                                accTnOut[b * capturedT * capturedC + t * capturedC + c] = accTnWte[ix * capturedC + c] + accTnWpe[t * capturedC + c];
                             }
                         });
             });

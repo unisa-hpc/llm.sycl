@@ -22,7 +22,7 @@ void goldCpu(
         const core::Tensor<float> &tnWpe,
         size_t wpeOffset,
         int B, int T, int C) {
-    auto accTnOut = tnOut.getAccessorHostWrite(outOffset);
+    auto accTnOut = tnOut.getAccessorHostReadWrite(outOffset);
     auto accTnIn = tnIn.getAccessorHostRead(inOffset);
     auto accTnWte = tnWte.getAccessorHostRead(wteOffset);
     auto accTnWpe = tnWpe.getAccessorHostRead(wpeOffset);
@@ -38,7 +38,7 @@ void goldCpu(
 }
 
 
-inline bool test() {
+static inline bool test() {
     sycl::queue q;
     prepareToTest(q);
 
@@ -67,8 +67,8 @@ inline bool test() {
         kernels::EncoderKernel kernel(tnOut, 0, tnIn, 0, tnWte, 0, tnWpe, 0, B, T, C);
         logger->info("BlockSize: {}, Device Time: {} ns", blockSize, kernel.LaunchBlockingAndMeasureNanoSec(q, blockSize));
 
-        auto accTnOut = tnOut.getAccessorHostRead();
-        auto accTnOutGold = tnOutGold.getAccessorHostRead();
+        auto accTnOut = tnOut.getAccessorHostReadWrite();
+        auto accTnOutGold = tnOutGold.getAccessorHostReadWrite();
         for (int i = 0; i < B * T * C; i++) {
             if (std::abs(accTnOut[i] - accTnOutGold[i]) > 1e-5) {
                 logger->error("\tEncoderKernel failed the verification test against the gold at index: {}", i);

@@ -42,23 +42,23 @@ TEST(tensor, Basic01) {
 
     Tensor<int> t1({SIZE});
     for (int i = 0; i < t1.getSize(); i++) {
-        t1.getAccessorHostWrite()[i] = i;
+        t1.getAccessorHostReadWrite()[i] = i;
     }
     t1.save("/tmp/t1.npy");
 
     Tensor<int> t2 = Tensor<int>::load("/tmp/t1.npy");
     for (int i = 0; i < t2.getSize(); i++) {
-        EXPECT_EQ(t2.getAccessorHostWrite()[i], i);
+        EXPECT_EQ(t2.getAccessorHostReadWrite()[i], i);
     }
 
     Tensor<int> t3(q, t2, false);
     for (int i = 0; i < t3.getSize(); i++) {
-        EXPECT_EQ(t3.getAccessorHostWrite()[i], i);
+        EXPECT_EQ(t3.getAccessorHostReadWrite()[i], i);
     }
 
     Tensor<int> t4(q, t2, true);
     for (int i = 0; i < t4.getSize(); i++) {
-        EXPECT_EQ(t4.getAccessorHostWrite()[i], i);
+        EXPECT_EQ(t4.getAccessorHostReadWrite()[i], i);
     }
 
     Tensor<int> t5({SIZE});
@@ -76,13 +76,18 @@ TEST(tensor, Basic01) {
     );
     q.wait();
     for (int i = 0; i < t5.getSize(); i++) {
-        EXPECT_EQ(t5.getAccessorHostWrite()[i], 4*i);
+        EXPECT_EQ(t5.getAccessorHostReadWrite()[i], 4*i);
     }
     t5.save("/tmp/t5.npy");
+    t5.save( SIZE/2, SIZE/2,"/tmp/t5s.npy");
 
     Tensor<int> t6 = Tensor<int>::load("/tmp/t5.npy");
-    for (int i = 0; i < t5.getSize(); i++) {
-        EXPECT_EQ(t6.getAccessorHostWrite()[i], 4*i);
+    for (int i = 0; i < t6.getSize(); i++) {
+        EXPECT_EQ(t6.getAccessorHostReadWrite()[i], 4*i);
+    }
+    Tensor<int> t7 = Tensor<int>::load("/tmp/t5s.npy");
+    for (int i = 0; i < t7.getSize(); i++) {
+        EXPECT_EQ(t7.getAccessorHostReadWrite()[i], 4*(i+SIZE/2));
     }
 
     t6.reshape({8, 8});
@@ -90,8 +95,8 @@ TEST(tensor, Basic01) {
     EXPECT_EQ(t6.reshape({4, 2, 0}), std::vector<size_t>({4, 2, 8}));
     EXPECT_EQ(t6.reshape({0, 8}), std::vector<size_t>({8, 8}));
 
-    EXPECT_EQ(t6.getAccessorHostRead(0)[1], t6.getAccessorHostRead(1)[0]);
-    EXPECT_EQ(t6.getAccessorHostRead(0)[5], t6.getAccessorHostRead(5)[0]);
-    EXPECT_EQ(t6.getAccessorHostRead(0)[2], t6.getAccessorHostRead(1)[1]);
+    EXPECT_EQ(t6.getAccessorHostReadWrite(0)[1], t6.getAccessorHostReadWrite(1)[0]);
+    EXPECT_EQ(t6.getAccessorHostReadWrite(0)[5], t6.getAccessorHostReadWrite(5)[0]);
+    EXPECT_EQ(t6.getAccessorHostReadWrite(0)[2], t6.getAccessorHostReadWrite(1)[1]);
 
 }

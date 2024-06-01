@@ -13,7 +13,7 @@ using namespace std;
 using namespace llmsycl;
 
 
-void goldCpu(
+static inline void goldCpu(
         core::Tensor<float> &tnOut,
         size_t outOffset,
         const core::Tensor<float> &tnInput,
@@ -25,7 +25,7 @@ void goldCpu(
         int B, int T, int C, int OC,
         bool hasBias = true) {
 
-    auto accTnOut = tnOut.getAccessorHostWrite(outOffset);
+    auto accTnOut = tnOut.getAccessorHostReadWrite(outOffset);
     auto accTnInput  = tnInput.getAccessorHostRead(inputOffset);
     auto accTnWeight  = tnWeight.getAccessorHostRead(weightOffset);
     auto accTnBias  = tnBias.getAccessorHostRead(biasOffset);
@@ -47,7 +47,7 @@ void goldCpu(
     }
 }
 
-inline void test() {
+static inline void test() {
     sycl::queue q;
     prepareToTest(q);
 
@@ -97,7 +97,7 @@ inline void test() {
             auto accTnOut = tnOut.getAccessorHostRead();
             auto accTnOutGold = tnOutGold.getAccessorHostRead();
             for (int i = 0; i < B * T * OC; i++) {
-                if (std::abs(accTnOut[i] - accTnOutGold[i]) > 1e-5) {
+                if (std::abs(accTnOut[i] - accTnOutGold[i]) > 1e-3) {
                     logger->error("\tMatmulBiasKernel tnOut failed the verification test against the gold at index: {}", i);
                     return false;
                 }

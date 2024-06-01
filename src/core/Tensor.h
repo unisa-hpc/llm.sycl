@@ -30,16 +30,23 @@ namespace llmsycl::core {
         T *__restrict hBuff = nullptr; ///< Never modify this pointer directly. Only do it through a host accessor.
         std::unique_ptr<sycl::buffer<T, 1>> dBuff;
 
-        template<sycl::access::mode accessMode>
         inline auto getAccessorHost(size_t offset = 0) const {
+            /*
             return sycl::host_accessor(*dBuff.get(), sycl::range<1>(dBuff->size() - offset), offset,
                                        sycl::mode_tag_t<accessMode>());
+            */
+            auto a = sycl::host_accessor(*dBuff.get());
+            return a.get_pointer() + offset;
         }
 
         template<sycl::access::mode accessMode>
         inline auto getAccessorDevice(sycl::handler &h, size_t offset = 0) const {
+            /*
             return sycl::accessor(*dBuff.get(), h, sycl::range<1>(dBuff->size() - offset), offset,
                                   sycl::mode_tag_t<accessMode>());
+                                  */
+            return dBuff.get()->template get_access<accessMode>(h, sycl::range<1>(dBuff->size() - offset), offset);
+
         }
 
     public:
@@ -71,16 +78,12 @@ namespace llmsycl::core {
          */
         std::vector<size_t> reshape(const std::vector<size_t> &newShape);
 
-        inline auto getAccessorHostRead(size_t offset = 0) const {
-            return getAccessorHost<sycl::access::mode::read>(offset);
+        inline T* getAccessorHostReadWrite(size_t offset = 0) {
+            return getAccessorHost(offset);
         }
 
-        inline auto getAccessorHostWrite(size_t offset = 0) {
-            return getAccessorHost<sycl::access::mode::write>(offset);
-        }
-
-        inline auto getAccessorHostReadWrite(size_t offset = 0) {
-            return getAccessorHost<sycl::access::mode::read_write>(offset);
+        inline const T* getAccessorHostRead(size_t offset = 0) const {
+            return getAccessorHost(offset);
         }
 
         inline auto getAccessorDeviceRead(sycl::handler &h, size_t offset = 0) const {
@@ -98,7 +101,7 @@ namespace llmsycl::core {
         static Tensor<T> load(std::string npyFile);
 
         void forceD2H() {
-            std::memcpy(hBuff, getAccessorHostRead().get_pointer(), sizeWords * sizeof(T));
+            std::memcpy(hBuff, getAccessorHostReadWrite(), sizeWords * sizeof(T));
         }
 
         std::vector<T> toVector() {
@@ -120,8 +123,9 @@ namespace llmsycl::core {
         sycl::buffer<T, 1> &getDeviceBuff() {
             return *dBuff.get();
         }
-    };
 
+        void save(size_t offset, size_t lenWords, const std::string &npyFile);
+    };
 
 
     template<typename TT>
