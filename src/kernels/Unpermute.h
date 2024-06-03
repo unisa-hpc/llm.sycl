@@ -16,30 +16,26 @@ namespace llmsycl::kernels {
 
     public:
         Unpermute(
-                core::Tensor<float> &tnOut,
-                size_t outOffset,
-                const core::Tensor<float> &tnInp,
-                size_t inpOffset,
+                float *dOut,
+                const float *dInp,
                 int B, int N, int NH, int d,
                 int gridSize
         ) :
                 BaseKernel("Unpermute"),
-                tnOut(tnOut), outOffset(outOffset),
-                tnInp(tnInp), inpOffset(inpOffset),
+                dOut(dOut),
+                dInp(dInp),
                 B(B), N(N), NH(NH), d(d), gridSize(gridSize) {
 
-            addTensorDetailsToReport("tnOut", tnOut);
-            addTensorDetailsToReport("tnInp", tnInp);
             addScalarParamToReport("B", B);
             addScalarParamToReport("N", N);
             addScalarParamToReport("NH", NH);
             addScalarParamToReport("d", d);
         }
 
-        sycl::event Launch(sycl::queue &q, int blockSize) override {
+        std::vector<sycl::event> Launch(sycl::queue &q, int blockSize) override {
             auto event = q.submit([&](sycl::handler &h) {
-                auto accTnOut = tnOut.getAccessorDeviceWrite(h, outOffset);
-                auto accTnInp = tnInp.getAccessorDeviceRead(h, inpOffset);
+                auto capturedOut = dOut;
+                auto capturedInp = dInp;
 
                 const int capturedB = this->B;
                 const int capturedN = this->N;
@@ -65,19 +61,17 @@ namespace llmsycl::kernels {
                                 int n = rest / capturedD;
                                 int d_ = rest % capturedD;
                                 int other_idx = (b * capturedNH * capturedN * capturedD) + (n * capturedNH * capturedD) + (nh_ * capturedD) + d_;
-                                accTnOut[other_idx] = accTnInp[idx];
+                                capturedOut[other_idx] = capturedInp[idx];
                             }
                         });
             });
             report();
-            return event;
+            return {event};
         }
 
     private:
-        core::Tensor<float> &tnOut;
-        size_t outOffset;
-        const core::Tensor<float> &tnInp;
-        size_t inpOffset;
+        float *dOut;
+        const float *dInp;
         const int B, N, NH, d, gridSize;
     };
 
