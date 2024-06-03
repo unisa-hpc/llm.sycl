@@ -15,7 +15,7 @@ target_sources(kernels
         #${CMAKE_CURRENT_LIST_DIR}/Softmax.cpp
         #${CMAKE_CURRENT_LIST_DIR}/MatmulBias.cpp
         #${CMAKE_CURRENT_LIST_DIR}/Residual.cpp
-        #${CMAKE_CURRENT_LIST_DIR}/Gelu.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/Gelu.cpp
         PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}/Helpers.h
         ${CMAKE_CURRENT_LIST_DIR}/BaseKernel.h
@@ -28,7 +28,7 @@ target_sources(kernels
         #${CMAKE_CURRENT_LIST_DIR}/Softmax.h
         #${CMAKE_CURRENT_LIST_DIR}/MatmulBias.h
         #${CMAKE_CURRENT_LIST_DIR}/Residual.h
-        #${CMAKE_CURRENT_LIST_DIR}/Gelu.h
+        ${CMAKE_CURRENT_LIST_DIR}/Gelu.h
 )
 target_include_directories(kernels
         PRIVATE

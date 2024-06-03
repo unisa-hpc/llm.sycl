@@ -16,27 +16,22 @@ namespace llmsycl::kernels {
 
     public:
         Gelu(
-                core::Tensor<float> &tnOutput,
-                size_t outputOffset,
-                core::Tensor<float> &tnInput,
-                size_t inputOffset,
+                float *dOutput,
+                const float *dInput,
                 int N) :
                 BaseKernel("Gelu"),
-                tnOutput(tnOutput), outputOffset(outputOffset),
-                tnInput(tnInput), inputOffset(inputOffset),
+                dOutput(dOutput),
+                dInput(dInput),
                 N(N), geluScalingFactor(std::sqrt(2.0f / M_PI)) {
 
-            addTensorDetailsToReport("tnOutput", tnOutput);
-            addTensorDetailsToReport("tnInput", tnInput);
-            addScalarParamToReport("outputOffset", outputOffset);
-            addScalarParamToReport("inputOffset", inputOffset);
             addScalarParamToReport("N", N);
+            addScalarParamToReport("geluScalingFactor", geluScalingFactor);
         }
 
-        sycl::event Launch(sycl::queue &q, int blockSize) override {
+        std::vector<sycl::event> Launch(sycl::queue &q, int blockSize) override {
             auto event = q.submit([&](sycl::handler &h) {
-                auto accTnOutput = tnOutput.getAccessorDeviceWrite(h, outputOffset);
-                auto accTnInput = tnInput.getAccessorDeviceRead(h, inputOffset);
+                auto capturedOutput = dOutput;
+                auto capturedInput = dInput;
                 const size_t capturedN = this->N;
                 const auto capturedGeluScalingFactor = this->geluScalingFactor;
 
@@ -48,23 +43,21 @@ namespace llmsycl::kernels {
                         [=](sycl::nd_item<1> item) {
                             const auto idx = item.get_global_id(0);
                             if (idx < capturedN) {
-                                const float xi = accTnInput[idx];
+                                const float xi = capturedInput[idx];
                                 float cube = 0.044715f * xi * xi * xi;
-                                accTnOutput[idx] = 0.5f * xi * (
+                                capturedOutput[idx] = 0.5f * xi * (
                                         1.0f + sycl::tanh<float>(capturedGeluScalingFactor * (xi + cube))
                                 );
                             }
                         });
             });
             report();
-            return event;
+            return {event};
         }
 
     private:
-        core::Tensor<float> &tnOutput;
-        size_t outputOffset;
-        const core::Tensor<float> &tnInput;
-        size_t inputOffset;
+        float *dOutput;
+        const float *dInput;
         const int N;
         const float geluScalingFactor;
     };

@@ -6,7 +6,7 @@ add_executable(testAll
         unittests/testTensor.cpp
         unittests/testKernelEncode.cpp
         #unittests/testKernelSoftmax.cpp
-        #unittests/testKernelLayerNorm.cpp
+        unittests/testKernelLayerNorm.cpp
         #unittests/testKernelMatmulBias.cpp
         unittests/testOneMkl.cpp
 )
