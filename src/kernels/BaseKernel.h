@@ -22,14 +22,21 @@ namespace llmsycl::kernels {
                 kernelName(kernelName) {
         }
 
-        virtual sycl::event Launch(sycl::queue &q, int blockSize)=0;
+        virtual std::vector<sycl::event> Launch(sycl::queue &q, int blockSize)=0;
 
         size_t LaunchBlockingAndMeasureNanoSec(sycl::queue &q, int blockSize) {
-            auto e = Launch(q, blockSize);
-            e.wait();
-            auto start = e.get_profiling_info<sycl::info::event_profiling::command_start>();
-            auto end = e.get_profiling_info<sycl::info::event_profiling::command_end>();
-            return end - start;
+            size_t sumElapsed = 0;
+            auto vecEvents = Launch(q, blockSize);
+            for(auto &e: vecEvents){
+                e.wait();
+            }
+            for(auto &e: vecEvents){
+                auto start = e.get_profiling_info<sycl::info::event_profiling::command_start>();
+                auto end = e.get_profiling_info<sycl::info::event_profiling::command_end>();
+                sumElapsed += end - start;
+            }
+
+            return sumElapsed;
         }
 
     protected:
