@@ -31,12 +31,12 @@ static void goldCpu(
         size_t biasOffset,
         int B, int T, int C) {
 
-    auto accTnOut = tnOut.getAccessorHostReadWrite(outOffset);
-    auto accTnMean = tnMean.getAccessorHostReadWrite(meanOffset);
-    auto accTnRstd = tnRstd.getAccessorHostReadWrite(rstdOffset);
-    auto accTnInp = tnInp.getAccessorHostRead(inpOffset);
-    auto accTnWeight = tnWeight.getAccessorHostRead(weightOffset);
-    auto accTnBias = tnBias.getAccessorHostRead(biasOffset);
+    auto accTnOut = tnOut.getHostBuffer() + outOffset;
+    auto accTnMean = tnMean.getHostBuffer() + meanOffset;
+    auto accTnRstd = tnRstd.getHostBuffer() + rstdOffset;
+    auto accTnInp = tnInp.getHostBuffer() + inpOffset;
+    auto accTnWeight = tnWeight.getHostBuffer() + weightOffset;
+    auto accTnBias = tnBias.getHostBuffer() + biasOffset;
 
     float eps = 1e-5f;
     for (int b = 0; b < B; b++) {
@@ -80,18 +80,18 @@ static inline bool test() {
     int C = 768;
 
     // create tensors
-    core::Tensor<float> tnOut({(size_t) B * T * C});
-    core::Tensor<float> tnOutGold({(size_t) B * T * C});
+    core::Tensor<float> tnOut(q, {(size_t) B * T * C});
+    core::Tensor<float> tnOutGold(q, {(size_t) B * T * C});
 
-    core::Tensor<float> tnMean({(size_t) B * T});
-    core::Tensor<float> tnMeanGold({(size_t) B * T});
+    core::Tensor<float> tnMean(q, {(size_t) B * T});
+    core::Tensor<float> tnMeanGold(q, {(size_t) B * T});
 
-    core::Tensor<float> tnRstd({(size_t) B * T});
-    core::Tensor<float> tnRstdGold({(size_t) B * T});
+    core::Tensor<float> tnRstd(q, {(size_t) B * T});
+    core::Tensor<float> tnRstdGold(q, {(size_t) B * T});
 
-    core::Tensor<float> tnIn({(size_t) B * T * C});
-    core::Tensor<float> tnWeight({(size_t) C});
-    core::Tensor<float> tnBias({(size_t) C});
+    core::Tensor<float> tnIn(q, {(size_t) B * T * C});
+    core::Tensor<float> tnWeight(q, {(size_t) C});
+    core::Tensor<float> tnBias(q, {(size_t) C});
 
     core::fillTensorWithRandomData(tnIn);
     core::fillTensorWithRandomData(tnWeight);
@@ -112,20 +112,22 @@ static inline bool test() {
         logger->info("Testing EncoderKernel with blockSize: {}", blockSize);
 
         kernels::LayerNorm kernel(
-                tnOut, 0,
-                tnMean, 0,
-                tnRstd, 0,
-                tnIn, 0,
-                tnWeight, 0,
-                tnBias, 0,
+                tnOut.getDeviceBuffer(),
+                tnMean.getDeviceBuffer(),
+                tnRstd.getDeviceBuffer(),
+                tnIn.getDeviceBuffer(),
+                tnWeight.getDeviceBuffer(),
+                tnBias.getDeviceBuffer(),
                 B, T, C
         );
 
         logger->info("BlockSize: {}, Device Time: {} ns", blockSize,
                      kernel.LaunchBlockingAndMeasureNanoSec(q, blockSize));
-
-        auto accTnOut = tnOut.getAccessorHostReadWrite();
-        auto accTnOutGold = tnOutGold.getAccessorHostReadWrite();
+        tnOut.syncBlockingD2H();
+        tnMean.syncBlockingD2H();
+        tnRstd.syncBlockingD2H();
+        auto accTnOut = tnOut.getHostBuffer();
+        auto accTnOutGold = tnOutGold.getHostBuffer();
         for (int i = 0; i < B * T * C; i++) {
             if (std::abs(accTnOut[i] - accTnOutGold[i]) > 1e-5) {
                 logger->error("\tLayerNormKernel tnOut failed the verification test against the gold at index: {}", i);
@@ -134,8 +136,8 @@ static inline bool test() {
         }
 
 
-        auto accTnMean = tnMean.getAccessorHostReadWrite();
-        auto accTnMeanGold = tnMeanGold.getAccessorHostReadWrite();
+        auto accTnMean = tnMean.getHostBuffer();
+        auto accTnMeanGold = tnMeanGold.getHostBuffer();
         for (int i = 0; i < B * T; i++) {
             if (std::abs(accTnMean[i] - accTnMeanGold[i]) > 1e-5) {
                 logger->error("\tLayerNormKernel tnMean failed the verification test against the gold at index: {}", i);
@@ -143,8 +145,8 @@ static inline bool test() {
             }
         }
 
-        auto accTnRstd = tnRstd.getAccessorHostReadWrite();
-        auto accTnRstdGold = tnRstdGold.getAccessorHostReadWrite();
+        auto accTnRstd = tnRstd.getHostBuffer();
+        auto accTnRstdGold = tnRstdGold.getHostBuffer();
         for (int i = 0; i < B * T; i++) {
             if (std::abs(accTnRstd[i] - accTnRstdGold[i]) > 1e-5) {
                 logger->error("\tLayerNormKernel tnRstd failed the verification test against the gold at index: {}", i);

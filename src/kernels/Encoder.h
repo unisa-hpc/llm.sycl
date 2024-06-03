@@ -33,7 +33,7 @@ namespace llmsycl::kernels {
             addScalarParamToReport("C", C);
         }
 
-        sycl::event Launch(sycl::queue &q, int blockSize) override {
+        std::vector<sycl::event> Launch(sycl::queue &q, int blockSize) override {
             auto event = q.submit([&](sycl::handler &h) {
                 const int bound = this->B * this->T * this->C;
                 const int capturedB = this->B;
@@ -76,7 +76,7 @@ namespace llmsycl::kernels {
                         });
             });
             report();
-            return event;
+            return {event};
         }
 
     private:

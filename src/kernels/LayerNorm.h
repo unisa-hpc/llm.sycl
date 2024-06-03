@@ -16,54 +16,35 @@ namespace llmsycl::kernels {
 
     public:
         LayerNorm(
-                core::Tensor<float> &tnOut,
-                size_t outOffset,
-                core::Tensor<float> &tnMean,
-                size_t meanOffset,
-                core::Tensor<float> &tnRstd,
-                size_t rstdOffset,
-                core::Tensor<float> &tnInp,
-                size_t inpOffset,
-                core::Tensor<float> &tnWeight,
-                size_t weightOffset,
-                core::Tensor<float> &tnBias,
-                size_t biasOffset,
+                float *dOut,
+                float *dMean,
+                float *dRstd,
+                const float *dInp,
+                const float *dWeight,
+                const float *dBias,
                 int B, int T, int C
         ) :
                 BaseKernel("LayerNorm"),
-                tnOut(tnOut),
-                outOffset(outOffset),
-                tnMean(tnMean),
-                meanOffset(meanOffset),
-                tnRstd(tnRstd),
-                rstdOffset(rstdOffset),
-                tnInp(tnInp),
-                inpOffset(inpOffset),
-                tnWeight(tnWeight),
-                weightOffset(weightOffset),
-                tnBias(tnBias),
-                biasOffset(biasOffset),
+                dOut(dOut),
+                dMean(dMean),
+                dRstd(dRstd),
+                dInp(dInp),
+                dWeight(dWeight),
+                dBias(dBias),
                 B(B), T(T), C(C) {
-            addTensorDetailsToReport("tnOut", tnOut);
-            addTensorDetailsToReport("tnMean", tnMean);
-            addTensorDetailsToReport("tnRstd", tnRstd);
-            addTensorDetailsToReport("tnInp", tnInp);
-            addTensorDetailsToReport("tnWeight", tnWeight);
-            addTensorDetailsToReport("tnBias", tnBias);
             addScalarParamToReport("B", B);
             addScalarParamToReport("T", T);
             addScalarParamToReport("C", C);
         }
 
-        sycl::event Launch(sycl::queue &q, int blockSize) override {
+        std::vector<sycl::event> Launch(sycl::queue &q, int blockSize) override {
             auto event = q.submit([&](sycl::handler &h) {
-
-                auto accTnOut = tnOut.getAccessorDeviceWrite(h, outOffset);
-                auto accTnMean = tnMean.getAccessorDeviceWrite(h, meanOffset);
-                auto accTnRstd = tnRstd.getAccessorDeviceWrite(h, rstdOffset);
-                auto accTnInp = tnInp.getAccessorDeviceRead(h, inpOffset);
-                auto accTnWeight = tnWeight.getAccessorDeviceRead(h, weightOffset);
-                auto accTnBias = tnBias.getAccessorDeviceRead(h, biasOffset);
+                auto capturedOut = dOut;
+                auto capturedMean = dMean;
+                auto capturedRstd = dRstd;
+                auto capturedInp = dInp;
+                auto capturedWeight = dWeight;
+                auto capturedBias = dBias;
 
                 const int capturedN = this->B * this->T;
                 const int capturedC = this->C;
@@ -81,48 +62,42 @@ namespace llmsycl::kernels {
                                 // calculate the mean
                                 float m = 0.0f;
                                 for (int i = 0; i < capturedC; i++) {
-                                    m += accTnInp[idx * capturedC + i];
+                                    m += capturedInp[idx * capturedC + i];
                                 }
-                                m = m / capturedC;
+                                m = m / (float)capturedC;
                                 // calculate the variance (without any bias correction)
                                 float v = 0.0f;
                                 for (int i = 0; i < capturedC; i++) {
-                                    float xshift = accTnInp[idx * capturedC + i] - m;
+                                    float xshift = capturedInp[idx * capturedC + i] - m;
                                     v += xshift * xshift;
                                 }
-                                v = v / capturedC;
+                                v = v / (float)capturedC;
                                 // calculate the rstd
                                 float s = 1.0f / sqrtf(v + eps);
 
 
                                 for (int i = 0; i < capturedC; i++) {
-                                    float n = (s * (accTnInp[idx * capturedC + i] - m)); // normalized output
-                                    float o = n * accTnWeight[i] + accTnBias[i]; // scale and shift it
-                                    accTnOut[idx * capturedC + i] = o; // write
+                                    float n = (s * (capturedInp[idx * capturedC + i] - m)); // normalized output
+                                    float o = n * capturedWeight[i] + capturedBias[i]; // scale and shift it
+                                    capturedOut[idx * capturedC + i] = o; // write
                                 }
                                 // cache the mean and rstd for the backward pass later
-                                accTnMean[idx] = m;
-                                accTnRstd[idx] = s;
+                                capturedMean[idx] = m;
+                                capturedRstd[idx] = s;
                             }
                         });
             });
             report();
-            return event;
+            return {event};
         }
 
     private:
-        core::Tensor<float> &tnOut;
-        const size_t outOffset;
-        core::Tensor<float> &tnMean;
-        const size_t meanOffset;
-        core::Tensor<float> &tnRstd;
-        const size_t rstdOffset;
-        core::Tensor<float> &tnInp;
-        const size_t inpOffset;
-        core::Tensor<float> &tnWeight;
-        const size_t weightOffset;
-        core::Tensor<float> &tnBias;
-        const size_t biasOffset;
+        float *dOut;
+        float *dMean;
+        float *dRstd;
+        const float *dInp;
+        const float *dWeight;
+        const float *dBias;
         const int B, T, C;
     };
 
