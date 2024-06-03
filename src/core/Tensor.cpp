@@ -71,6 +71,7 @@ Tensor<T>::Tensor(sycl::queue &queue, std::vector<size_t> shape, std::vector<T> 
     hBuff = new T[sizeWords];
     std::memcpy(hBuff, vecData.data(), sizeWords * sizeof(T));
     dBuff = static_cast<T *>(sycl::malloc_device(sizeWords * sizeof(T), queue));
+    syncBlockingH2D();
 }
 
 template<typename T>
@@ -81,6 +82,7 @@ Tensor<T>::Tensor(sycl::queue &queue, std::vector<size_t> shape, const T *buff):
     hBuff = new T[sizeWords];
     std::memcpy(hBuff, buff, sizeWords * sizeof(T));
     dBuff = static_cast<T *>(sycl::malloc_device(sizeWords * sizeof(T), queue));
+    syncBlockingH2D();
 }
 
 template<typename T>
@@ -99,6 +101,7 @@ Tensor<T>::Tensor(Tensor &other, bool fromItsDeviceBuffer):
         syncBlockingD2H();
     } else {
         std::memcpy(hBuff, other.hBuff, sizeWords * sizeof(T));
+        syncBlockingH2D();
     }
 }
 
