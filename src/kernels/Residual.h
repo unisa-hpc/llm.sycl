@@ -16,33 +16,24 @@ namespace llmsycl::kernels {
 
     public:
         Residual(
-                core::Tensor<float> &tnOutput,
-                size_t outputOffset,
-                core::Tensor<float> &tnInput1,
-                size_t input1Offset,
-                core::Tensor<float> &tnInput2,
-                size_t input2Offset,
+                float *dOutput,
+                const float *dInput1,
+                const float *dInput2,
                 int N ) :
                 BaseKernel("Residual"),
-                tnOutput(tnOutput), outputOffset(outputOffset),
-                tnInput1(tnInput1), input1Offset(input1Offset),
-                tnInput2(tnInput2), input2Offset(input2Offset),
+                dOutput(dOutput),
+                dInput1(dInput1),
+                dInput2(dInput2),
                 N(N)  {
 
-            addTensorDetailsToReport("tnOutput", tnOutput);
-            addTensorDetailsToReport("tnInput1", tnInput1);
-            addTensorDetailsToReport("tnInput2", tnInput2);
-            addScalarParamToReport("outputOffset", outputOffset);
-            addScalarParamToReport("input1Offset", input1Offset);
-            addScalarParamToReport("input1Offset", input2Offset);
             addScalarParamToReport("N", N);
         }
 
-        sycl::event Launch(sycl::queue &q, int blockSize) override {
+        std::vector<sycl::event> Launch(sycl::queue &q, int blockSize) override {
             auto event = q.submit([&](sycl::handler &h) {
-                auto accTnOutput = tnOutput.getAccessorDeviceWrite(h, outputOffset);
-                auto accTnInput1 = tnInput1.getAccessorDeviceRead(h, input1Offset);
-                auto accTnInput2 = tnInput2.getAccessorDeviceRead(h, input2Offset);
+                auto capturedOutput = dOutput;
+                auto capturedInput1 = dInput1;
+                auto capturedInput2 = dInput2;
                 const size_t capturedN = this->N;
 
                 h.parallel_for(
@@ -53,21 +44,18 @@ namespace llmsycl::kernels {
                         [=](sycl::nd_item<1> item) {
                             const auto idx = item.get_global_id(0);
                             if (idx < capturedN) {
-                                accTnOutput[idx] = accTnInput1[idx] + accTnInput2[idx];
+                                capturedOutput[idx] = capturedInput1[idx] + capturedInput2[idx];
                             }
                         });
             });
             report();
-            return event;
+            return {event};
         }
 
     private:
-        core::Tensor<float> &tnOutput;
-        size_t outputOffset;
-        const core::Tensor<float> &tnInput1;
-        size_t input1Offset;
-        const core::Tensor<float> &tnInput2;
-        size_t input2Offset;
+        float *dOutput;
+        const float *dInput1;
+        const float *dInput2;
         const int N;
     };
 
