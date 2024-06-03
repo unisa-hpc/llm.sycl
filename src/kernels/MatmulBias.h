@@ -17,28 +17,19 @@ namespace llmsycl::kernels {
 
     public:
         MatmulBias(
-                core::Tensor<float> &tnOut,
-                size_t outOffset,
-                core::Tensor<float> &tnInp,
-                size_t inpOffset,
-                core::Tensor<float> &tnWeight,
-                size_t weightOffset,
-                core::Tensor<float> &tnBias,
-                size_t biasOffset,
+                float *dOut,
+                const float *dInp,
+                const float *dWeight,
+                const float *dBias,
                 int B, int T, int C, int OC,
                 bool hasBias = true
         ) :
                 BaseKernel("Matmul"),
-                tnOut(tnOut), outOffset(outOffset),
-                tnInp(tnInp), inpOffset(inpOffset),
-                tnWeight(tnWeight), weightOffset(weightOffset),
-                tnBias(tnBias), biasOffset(biasOffset),
+                dOut(dOut),
+                dInp(dInp),
+                dWeight(dWeight),
+                dBias(dBias),
                 B(B), T(T), C(C), OC(OC), hasBias(hasBias) {
-
-            addTensorDetailsToReport("tnOut", tnOut);
-            addTensorDetailsToReport("tnInp", tnInp);
-            addTensorDetailsToReport("tnWeight", tnWeight);
-            addTensorDetailsToReport("tnBias", tnBias);
 
             addScalarParamToReport("B", B);
             addScalarParamToReport("T", T);
@@ -47,8 +38,13 @@ namespace llmsycl::kernels {
             addScalarParamToReport("hasBias", hasBias);
         }
 
-        sycl::event Launch(sycl::queue &q, int blockSize) override {
-            sycl::event event;
+        std::vector<sycl::event> Launch(sycl::queue &q, int blockSize) override {
+            std::vector<sycl::event> events;
+            auto capturedInp = dInp;
+            auto capturedWeight = dWeight;
+            auto capturedBias = dBias;
+            auto capturedOut = dOut;
+
             {
                 // inp is (B*T, C)  : transpose (col-mjr) : k=C, n=B*T
                 // weight is (OC, C) : transpose : transpose (col-mjr) : m=OC, k=C
@@ -65,54 +61,33 @@ namespace llmsycl::kernels {
                     B is a k by n matrix
                     C is an m by n matrix
                 */
-                auto subBufW = sycl::buffer(
-                        tnWeight.getDeviceBuff(),
-                        sycl::id<1>(weightOffset),
-                        sycl::range<1>(C * OC)
-                );
-                auto subBufI = sycl::buffer(
-                        tnInp.getDeviceBuff(),
-                        sycl::id<1>(inpOffset),
-                        sycl::range<1>(B * T * C)
-                );
-                auto subBufO = sycl::buffer(
-                        tnOut.getDeviceBuff(),
-                        sycl::id<1>(outOffset),
-                        sycl::range<1>(B * T * OC)
-                );
+
                 const float alpha = 1.0f;
                 const float beta = 0.0f;
                 //cublasSgemm(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N, OC, B*T, C, &alpha, weight, C, inp, C, &beta, out, OC));
-                oneapi::mkl::blas::column_major::gemm(
+                auto event = oneapi::mkl::blas::column_major::gemm(
                         q,
                         oneapi::mkl::transpose::trans,
                         oneapi::mkl::transpose::nontrans,
                         OC, B * T, C,  //m, n, k
                         alpha,
-                        subBufW,
+                        capturedWeight,
                         C,
-                        subBufI,
+                        capturedInp,
                         C,
                         beta,
-                        subBufO,
+                        dOut,
                         OC
                 );
+                events.push_back(event);
             }
 
             if (hasBias) {
-                event = q.submit([&](sycl::handler &h) {
-                    auto accTnOut = tnOut.getAccessorDeviceReadWrite(h, outOffset);
-                    auto accTnInp = tnInp.getAccessorDeviceRead(h, inpOffset);
-                    auto accTnWeight = tnWeight.getAccessorDeviceRead(h, weightOffset);
-                    auto accTnBias = tnBias.getAccessorDeviceRead(h, biasOffset);
-
+                auto event = q.submit([&](sycl::handler &h) {
                     const int capturedB = this->B;
                     const int capturedT = this->T;
                     const int capturedC = this->C;
                     const int capturedOC = this->OC;
-
-
-
 
                     /*
                     int block_size = sqrt_block_size * sqrt_block_size;
@@ -130,26 +105,24 @@ namespace llmsycl::kernels {
                                     int b = idx / (capturedT * capturedOC);
                                     int t = (idx % (capturedT * capturedOC)) / capturedOC;
                                     int oc = idx % capturedOC;
-                                    accTnOut[b * capturedT * capturedOC + t * capturedOC + oc] += accTnBias[oc];
+                                    capturedOut[b * capturedT * capturedOC + t * capturedOC + oc] += capturedBias[oc];
                                 }
                             }
                     );
 
                 });
+                events.push_back(event);
             }
             report();
-            return event;
+            return events;
         }
 
     private:
-        core::Tensor<float> &tnOut;
-        size_t outOffset;
-        core::Tensor<float> &tnInp;
-        size_t inpOffset;
-        core::Tensor<float> &tnWeight;
-        size_t weightOffset;
-        core::Tensor<float> &tnBias;
-        size_t biasOffset;
+        float *dOut;
+        const float *dInp;
+        const float *dWeight;
+        const float *dBias;
+
         const int B, T, C, OC;
         const bool hasBias;
     };
