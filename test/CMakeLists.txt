@@ -5,9 +5,9 @@ add_executable(testAll
         unittests/testCommon.h
         unittests/testTensor.cpp
         unittests/testKernelEncode.cpp
-        unittests/testKernelSoftmax.cpp
-        unittests/testKernelLayerNorm.cpp
-        unittests/testKernelMatmulBias.cpp
+        #unittests/testKernelSoftmax.cpp
+        #unittests/testKernelLayerNorm.cpp
+        #unittests/testKernelMatmulBias.cpp
         unittests/testOneMkl.cpp
 )
 target_compile_options(testAll PRIVATE ${BASE_FLAGS})

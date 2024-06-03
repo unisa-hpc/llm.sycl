@@ -22,10 +22,10 @@ void goldCpu(
         const core::Tensor<float> &tnWpe,
         size_t wpeOffset,
         int B, int T, int C) {
-    auto accTnOut = tnOut.getAccessorHostReadWrite(outOffset);
-    auto accTnIn = tnIn.getAccessorHostRead(inOffset);
-    auto accTnWte = tnWte.getAccessorHostRead(wteOffset);
-    auto accTnWpe = tnWpe.getAccessorHostRead(wpeOffset);
+    auto accTnOut = tnOut.getHostBuffer() + outOffset;
+    auto accTnIn = tnIn.getHostBuffer() + inOffset;
+    auto accTnWte = tnWte.getHostBuffer() + wteOffset;
+    auto accTnWpe = tnWpe.getHostBuffer() + wpeOffset;
 
     for (int b = 0; b < B; b++) {
         for (int t = 0; t < T; t++) {
@@ -48,27 +48,35 @@ static inline bool test() {
     int V = 50257;
 
     // create tensors
-    core::Tensor<float> tnOut({(size_t) B * T * C});
-    core::Tensor<float> tnOutGold({(size_t) B * T * C});
-    core::Tensor<int> tnIn({(size_t) B * T});
-    core::Tensor<float> tnWte({(size_t) V * C});
-    core::Tensor<float> tnWpe({(size_t) T * C});
+    core::Tensor<float> tnOut(q, {(size_t) B * T * C});
+    core::Tensor<float> tnOutGold(q, {(size_t) B * T * C});
+    core::Tensor<int> tnIn(q, {(size_t) B * T});
+    core::Tensor<float> tnWte(q, {(size_t) V * C});
+    core::Tensor<float> tnWpe(q, {(size_t) T * C});
 
     core::fillTensorWithRandomData(tnIn, V);
     core::fillTensorWithRandomData(tnWte);
     core::fillTensorWithRandomData(tnWpe);
 
-    int blockSizes[] = {32, 64, 128, 256, 512, 1024 };
+    int blockSizes[] = {32, 64, 128, 256, 512, 1024};
     goldCpu(tnOutGold, 0, tnIn, 0, tnWte, 0, tnWpe, 0, B, T, C);
 
-    for(auto blockSize: blockSizes) {
+    for (auto blockSize: blockSizes) {
         logger->info("Testing EncoderKernel with blockSize: {}", blockSize);
 
-        kernels::EncoderKernel kernel(tnOut, 0, tnIn, 0, tnWte, 0, tnWpe, 0, B, T, C);
-        logger->info("BlockSize: {}, Device Time: {} ns", blockSize, kernel.LaunchBlockingAndMeasureNanoSec(q, blockSize));
+        kernels::EncoderKernel kernel(
+                tnOut.getDeviceBuffer(),
+                tnIn.getDeviceBuffer(),
+                tnWte.getDeviceBuffer(),
+                tnWpe.getDeviceBuffer(),
+                B, T, C
+        );
+        logger->info("BlockSize: {}, Device Time: {} ns", blockSize,
+                     kernel.LaunchBlockingAndMeasureNanoSec(q, blockSize));
 
-        auto accTnOut = tnOut.getAccessorHostReadWrite();
-        auto accTnOutGold = tnOutGold.getAccessorHostReadWrite();
+        tnOut.syncBlockingD2H();
+        auto accTnOut = tnOut.getHostBuffer();
+        auto accTnOutGold = tnOutGold.getHostBuffer();
         for (int i = 0; i < B * T * C; i++) {
             if (std::abs(accTnOut[i] - accTnOutGold[i]) > 1e-5) {
                 logger->error("\tEncoderKernel failed the verification test against the gold at index: {}", i);

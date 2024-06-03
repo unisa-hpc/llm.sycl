@@ -16,30 +16,18 @@ namespace llmsycl::kernels {
 
     public:
         EncoderKernel(
-                core::Tensor<float> &tnOut,
-                size_t outOffset,
-                const core::Tensor<int> &tnIn,
-                size_t inOffset,
-                const core::Tensor<float> &tnWte,
-                size_t wteOffset,
-                const core::Tensor<float> &tnWpe,
-                size_t wpeOffset,
+                float *dOut,
+                const int *dIn,
+                const float *dWte,
+                const float *dWpe,
                 int B, int T, int C) :
                 BaseKernel("EncoderKernel"),
-                tnOut(tnOut),
-                tnIn(tnIn),
-                tnWte(tnWte),
-                tnWpe(tnWpe),
-                B(B), T(T), C(C),
-                offsetOut(outOffset),
-                offsetIn(inOffset),
-                offsetWte(wteOffset),
-                offsetWpe(wpeOffset) {
+                dOut(dOut),
+                dIn(dIn),
+                dWte(dWte),
+                dWpe(dWpe),
+                B(B), T(T), C(C) {
 
-            addTensorDetailsToReport("tnOut", tnOut);
-            addTensorDetailsToReport("tnIn", tnIn);
-            addTensorDetailsToReport("tnWte", tnWte);
-            addTensorDetailsToReport("tnWpe", tnWpe);
             addScalarParamToReport("B", B);
             addScalarParamToReport("T", T);
             addScalarParamToReport("C", C);
@@ -47,25 +35,20 @@ namespace llmsycl::kernels {
 
         sycl::event Launch(sycl::queue &q, int blockSize) override {
             auto event = q.submit([&](sycl::handler &h) {
-                auto accTnOut = tnOut.getAccessorDeviceWrite(h, offsetOut);
-                auto accTnIn = tnIn.getAccessorDeviceRead(h, offsetIn);
-                auto accTnWte = tnWte.getAccessorDeviceRead(h, offsetWte);
-                auto accTnWpe = tnWpe.getAccessorDeviceRead(h, offsetWpe);
-
                 const int bound = this->B * this->T * this->C;
                 const int capturedB = this->B;
                 const int capturedT = this->T;
                 const int capturedC = this->C;
+                auto capturedWte = this->dWte;
+                auto capturedWpe = this->dWpe;
+                auto capturedOut = this->dOut;
+                auto capturedIn = this->dIn;
 
                 logger->trace("bound: {}", bound);
                 logger->trace("capturedB: {}", capturedB);
                 logger->trace("capturedT: {}", capturedT);
                 logger->trace("capturedC: {}", capturedC);
                 logger->trace("blockSize: {}", blockSize);
-                logger->trace("offsetOut: {}", offsetOut);
-                logger->trace("offsetIn: {}", offsetIn);
-                logger->trace("offsetWte: {}", offsetWte);
-                logger->trace("offsetWpe: {}", offsetWpe);
                 logger->trace("globalSize: {}", Helpers::MakeDivisible(B * T * C, blockSize));
 
                 h.parallel_for(
@@ -85,9 +68,10 @@ namespace llmsycl::kernels {
                                 const int b = bt / capturedT;
                                 const int t = bt % capturedT;
                                 const int c = idx % capturedC;
-                                const int ix = accTnIn[b * capturedT + t];
+                                const int ix = capturedIn[b * capturedT + t];
                                 //out[b * T * C4 + t * C4 + c4] = add_float4(wte[ix * C4 + c4], wpe[t * C4 + c4]);
-                                accTnOut[b * capturedT * capturedC + t * capturedC + c] = accTnWte[ix * capturedC + c] + accTnWpe[t * capturedC + c];
+                                capturedOut[b * capturedT * capturedC + t * capturedC + c] =
+                                        capturedWte[ix * capturedC + c] + capturedWpe[t * capturedC + c];
                             }
                         });
             });
@@ -96,12 +80,11 @@ namespace llmsycl::kernels {
         }
 
     private:
-        core::Tensor<float> &tnOut;
-        const core::Tensor<int> &tnIn;
-        const core::Tensor<float> &tnWte;
-        const core::Tensor<float> &tnWpe;
+        float *dOut;
+        const int *dIn;
+        const float *dWte;
+        const float *dWpe;
         const int B, T, C;
-        const size_t offsetOut, offsetIn, offsetWte, offsetWpe;
     };
 
 

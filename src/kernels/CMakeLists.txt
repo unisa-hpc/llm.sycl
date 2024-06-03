@@ -7,26 +7,28 @@ target_sources(kernels
         ${CMAKE_CURRENT_LIST_DIR}/Helpers.cpp
         ${CMAKE_CURRENT_LIST_DIR}/BaseKernel.cpp
         ${CMAKE_CURRENT_LIST_DIR}/Encoder.cpp
-        ${CMAKE_CURRENT_LIST_DIR}/LayerNorm.cpp
-        ${CMAKE_CURRENT_LIST_DIR}/Attention.cpp
-        ${CMAKE_CURRENT_LIST_DIR}/Permute.cpp
-        ${CMAKE_CURRENT_LIST_DIR}/Unpermute.cpp
-        ${CMAKE_CURRENT_LIST_DIR}/Softmax.cpp
-        ${CMAKE_CURRENT_LIST_DIR}/MatmulBias.cpp
-        ${CMAKE_CURRENT_LIST_DIR}/Residual.cpp
-        ${CMAKE_CURRENT_LIST_DIR}/Gelu.cpp
+        #${CMAKE_CURRENT_LIST_DIR}/LayerNorm.cpp
+        #${CMAKE_CURRENT_LIST_DIR}/Attention.cpp
+        #${CMAKE_CURRENT_LIST_DIR}/AttentionCpu.cpp
+        #${CMAKE_CURRENT_LIST_DIR}/Permute.cpp
+        #${CMAKE_CURRENT_LIST_DIR}/Unpermute.cpp
+        #${CMAKE_CURRENT_LIST_DIR}/Softmax.cpp
+        #${CMAKE_CURRENT_LIST_DIR}/MatmulBias.cpp
+        #${CMAKE_CURRENT_LIST_DIR}/Residual.cpp
+        #${CMAKE_CURRENT_LIST_DIR}/Gelu.cpp
         PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}/Helpers.h
         ${CMAKE_CURRENT_LIST_DIR}/BaseKernel.h
         ${CMAKE_CURRENT_LIST_DIR}/Encoder.h
-        ${CMAKE_CURRENT_LIST_DIR}/LayerNorm.h
-        ${CMAKE_CURRENT_LIST_DIR}/Attention.h
-        ${CMAKE_CURRENT_LIST_DIR}/Permute.h
-        ${CMAKE_CURRENT_LIST_DIR}/Unpermute.h
-        ${CMAKE_CURRENT_LIST_DIR}/Softmax.h
-        ${CMAKE_CURRENT_LIST_DIR}/MatmulBias.h
-        ${CMAKE_CURRENT_LIST_DIR}/Residual.h
-        ${CMAKE_CURRENT_LIST_DIR}/Gelu.h
+        #${CMAKE_CURRENT_LIST_DIR}/LayerNorm.h
+        #${CMAKE_CURRENT_LIST_DIR}/Attention.h
+        #${CMAKE_CURRENT_LIST_DIR}/AttentionCpu.h
+        #${CMAKE_CURRENT_LIST_DIR}/Permute.h
+        #${CMAKE_CURRENT_LIST_DIR}/Unpermute.h
+        #${CMAKE_CURRENT_LIST_DIR}/Softmax.h
+        #${CMAKE_CURRENT_LIST_DIR}/MatmulBias.h
+        #${CMAKE_CURRENT_LIST_DIR}/Residual.h
+        #${CMAKE_CURRENT_LIST_DIR}/Gelu.h
 )
 target_include_directories(kernels
         PRIVATE
