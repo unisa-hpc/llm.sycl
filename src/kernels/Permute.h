@@ -16,39 +16,31 @@ namespace llmsycl::kernels {
 
     public:
         Permute(
-                core::Tensor<float> &tnQ,
-                size_t qOffset,
-                core::Tensor<float> &tnK,
-                size_t kOffset,
-                core::Tensor<float> &tnV,
-                size_t vOffset,
-                const core::Tensor<float> &tnInp,
-                size_t inpOffset,
+                float *dQ,
+                float *dK,
+                float *dV,
+                const float *dInp,
                 int B, int N, int NH, int d
         ) :
                 BaseKernel("Permute"),
-                tnQ(tnQ), qOffset(qOffset),
-                tnK(tnK), kOffset(kOffset),
-                tnV(tnV), vOffset(vOffset),
-                tnInp(tnInp), inpOffset(inpOffset),
+                dQ(dQ),
+                dK(dK),
+                dV(dV),
+                dInp(dInp),
                 B(B), N(N), NH(NH), d(d) {
 
-            addTensorDetailsToReport("tnQ", tnQ);
-            addTensorDetailsToReport("tnK", tnK);
-            addTensorDetailsToReport("tnV", tnV);
-            addTensorDetailsToReport("tnInp", tnInp);
             addScalarParamToReport("B", B);
             addScalarParamToReport("N", N);
             addScalarParamToReport("NH", NH);
             addScalarParamToReport("d", d);
         }
 
-        sycl::event Launch(sycl::queue &q, int blockSize) override {
+        std::vector<sycl::event> Launch(sycl::queue &q, int blockSize) override {
             auto event = q.submit([&](sycl::handler &h) {
-                auto accTnQ = tnQ.getAccessorDeviceWrite(h, qOffset);
-                auto accTnK = tnK.getAccessorDeviceWrite(h, kOffset);
-                auto accTnV = tnV.getAccessorDeviceWrite(h, vOffset);
-                auto accTnInp = tnInp.getAccessorDeviceRead(h, inpOffset);
+                auto capturedQ = dQ;
+                auto capturedK = dK;
+                auto capturedV = dV;
+                auto capturedInp = dInp;
 
                 const int capturedB = this->B;
                 const int capturedN = this->N;
@@ -80,25 +72,21 @@ namespace llmsycl::kernels {
                                         (0 * capturedNH * capturedD) +
                                         (nh_ * capturedD) +
                                         d_;
-                                accTnQ[idx] = accTnInp[inp_idx];
-                                accTnK[idx] = accTnInp[inp_idx + capturedNH * capturedD];
-                                accTnV[idx] = accTnInp[inp_idx + 2 * (capturedNH * capturedD)];
+                                capturedQ[idx] = capturedInp[inp_idx];
+                                capturedK[idx] = capturedInp[inp_idx + capturedNH * capturedD];
+                                capturedV[idx] = capturedInp[inp_idx + 2 * (capturedNH * capturedD)];
                             }
                         });
             });
             report();
-            return event;
+            return {event};
         }
 
     private:
-        core::Tensor<float> &tnQ;
-        size_t qOffset;
-        core::Tensor<float> &tnK;
-        size_t kOffset;
-        core::Tensor<float> &tnV;
-        size_t vOffset;
-        const core::Tensor<float> &tnInp;
-        size_t inpOffset;
+        float *dQ;
+        float *dK;
+        float *dV;
+        const float *dInp;
         const int B, N, NH, d;
     };
 
