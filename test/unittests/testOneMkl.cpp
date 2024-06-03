@@ -2,7 +2,6 @@
 // Created by saleh on 24/05/24.
 //
 
-
 #include <gtest/gtest.h>
 #include "common/common.h"
 #include "core/Tensor.h"
@@ -13,8 +12,6 @@ using namespace std;
 using namespace llmsycl;
 
 // Create an exception handler for asynchronous SYCL exceptions
-
-
 inline void initSycl(sycl::queue &outQ) {
     auto asycExceptionHandler = [](sycl::exception_list e_list) {
         for (std::exception_ptr const &e: e_list) {
@@ -39,10 +36,10 @@ TEST(oneMKL, gemm1) {
     sycl::queue queue;
     initSycl(queue);
 
-    core::Tensor<float> tnA({16, 16});
-    core::Tensor<float> tnB({16, 16});
-    core::Tensor<float> tnC({16, 16});
-    core::Tensor<float> tnGold({16, 16});
+    core::Tensor<float> tnA(queue, {16, 16});
+    core::Tensor<float> tnB(queue, {16, 16});
+    core::Tensor<float> tnC(queue, {16, 16});
+    core::Tensor<float> tnGold(queue, {16, 16});
     float alpha = 1.5f;
     float beta = 0.0f;
 
@@ -62,12 +59,12 @@ TEST(oneMKL, gemm1) {
                 16,
                 16,
                 alpha,
-                tnB.getDeviceBuff(),  // swapped order
+                tnB.getDeviceBuffer(),  // swapped order
                 16,
-                tnA.getDeviceBuff(),  // swapped order
+                tnA.getDeviceBuffer(),  // swapped order
                 16,
                 beta,
-                tnC.getDeviceBuff(),
+                tnC.getDeviceBuffer(),
                 16
         );
         queue.wait_and_throw();
@@ -76,24 +73,23 @@ TEST(oneMKL, gemm1) {
         std::terminate();
     }
 
-
-
+    tnC.syncBlockingD2H();
 
     {
         int sizeM, sizeN, sizeK;
         sizeM = tnA.getShape()[0];
         sizeN = tnB.getShape()[1];
         sizeK = tnA.getShape()[1];
-        auto accGold = tnGold.getAccessorHostReadWrite(0);
-        auto accA = tnA.getAccessorHostReadWrite(0);
-        auto accB = tnB.getAccessorHostReadWrite(0);
-        auto accC = tnC.getAccessorHostReadWrite(0);
+        auto accGold = tnGold.getHostBuffer();
+        auto accA = tnA.getHostBuffer();
+        auto accB = tnB.getHostBuffer();
+        auto accC = tnC.getHostBuffer();
         for (int j = 0; j < sizeM; j++) {
             for (int i = 0; i < sizeN; i++) {
                 accGold[j * sizeN + i] = 0;
                 for (int k = 0; k < sizeK; k++) {
                     accGold[j * sizeN + i] +=
-                            alpha *accA[j * sizeK + k] *
+                            alpha * accA[j * sizeK + k] *
                             accB[k * sizeN + i];
                 }
                 //accGold[j * sizeN + i] *= alpha;
@@ -102,8 +98,82 @@ TEST(oneMKL, gemm1) {
         }
     }
 
-    auto gold = tnGold.toVector();
-    auto uut = tnC.toVector();
+    auto gold = tnGold.toVectorHostOnly();
+    auto uut = tnC.toVectorHostOnly();
+    // verify tnGold with tnC
+    for (int i = 0; i < tnGold.getSize(); i++) {
+        EXPECT_NEAR(gold[i], uut[i], 1e-5);
+    }
+
+}
+
+TEST(oneMKL, batchedGemm1) {
+    sycl::queue queue;
+    initSycl(queue);
+
+    core::Tensor<float> tnA(queue, {16, 16});
+    core::Tensor<float> tnB(queue, {16, 16});
+    core::Tensor<float> tnC(queue, {16, 16});
+    core::Tensor<float> tnGold(queue, {16, 16});
+    float alpha = 1.5f;
+    float beta = 0.0f;
+
+    core::fillTensorWithRandomData(tnA);
+    core::fillTensorWithRandomData(tnB);
+    core::fillTensorWithRandomData(tnC);
+
+    oneapi::mkl::transpose transA = oneapi::mkl::transpose::nontrans;
+    oneapi::mkl::transpose transB = oneapi::mkl::transpose::nontrans;
+
+    try {
+        oneapi::mkl::blas::column_major::gemm(
+                queue,
+                transA,
+                transB,
+                16,
+                16,
+                16,
+                alpha,
+                tnB.getDeviceBuffer(),  // swapped order
+                16,
+                tnA.getDeviceBuffer(),  // swapped order
+                16,
+                beta,
+                tnC.getDeviceBuffer(),
+                16
+        );
+        queue.wait_and_throw();
+    } catch (std::exception &e) {
+        logger->error("Exception: {}", e.what());
+        std::terminate();
+    }
+
+    tnC.syncBlockingD2H();
+
+    {
+        int sizeM, sizeN, sizeK;
+        sizeM = tnA.getShape()[0];
+        sizeN = tnB.getShape()[1];
+        sizeK = tnA.getShape()[1];
+        auto accGold = tnGold.getHostBuffer();
+        auto accA = tnA.getHostBuffer();
+        auto accB = tnB.getHostBuffer();
+        for (int j = 0; j < sizeM; j++) {
+            for (int i = 0; i < sizeN; i++) {
+                accGold[j * sizeN + i] = 0;
+                for (int k = 0; k < sizeK; k++) {
+                    accGold[j * sizeN + i] +=
+                            alpha * accA[j * sizeK + k] *
+                            accB[k * sizeN + i];
+                }
+                //accGold[j * sizeN + i] *= alpha;
+                // beta is zero, no need to add beta*C
+            }
+        }
+    }
+
+    auto gold = tnGold.toVectorHostOnly();
+    auto uut = tnC.toVectorHostOnly();
     // verify tnGold with tnC
     for (int i = 0; i < tnGold.getSize(); i++) {
         EXPECT_NEAR(gold[i], uut[i], 1e-5);

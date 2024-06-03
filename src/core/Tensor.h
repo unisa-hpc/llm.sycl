@@ -121,6 +121,7 @@ namespace llmsycl::core {
          */
         void syncBlockingD2H() {
             queue.memcpy(hBuff, dBuff, sizeWords * sizeof(T));
+            queue.wait_and_throw();
         }
 
         /**
@@ -128,6 +129,7 @@ namespace llmsycl::core {
          */
         void syncBlockingH2D() {
             queue.memcpy(dBuff, hBuff, sizeWords * sizeof(T));
+            queue.wait_and_throw();
         }
 
         /**
@@ -146,13 +148,12 @@ namespace llmsycl::core {
 
         /**
          * @brief Convert the host buffer to a vector.
-         * @note The device buffer **will be** synced with the host buffer.
+         * @note This method has nothing to do with the device buffer. It does not sync anything either.
          * @return A vector of the data.
          */
-        std::vector<T> toVector() {
+        std::vector<T> toVectorHostOnly() {
             std::vector<T> vec;
             vec.resize(sizeWords);
-            syncBlockingD2H();
             std::memcpy(vec.data(), hBuff, sizeWords * sizeof(T));
             return vec;
         }
