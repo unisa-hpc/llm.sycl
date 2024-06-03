@@ -40,63 +40,68 @@ TEST(tensor, Basic01) {
     using namespace llmsycl::core;
     constexpr int SIZE = 64;
 
-    Tensor<int> t1({SIZE});
+    Tensor<int> t1(q, {SIZE});
     for (int i = 0; i < t1.getSize(); i++) {
-        t1.getAccessorHostReadWrite()[i] = i;
+        t1.getHostBuffer()[i] = i;
     }
-    t1.save("/tmp/t1.npy");
+    t1.saveHostToNpy("/tmp/t1.npy");
 
-    Tensor<int> t2 = Tensor<int>::load("/tmp/t1.npy");
+    Tensor<int> t2 = Tensor<int>::loadToHost(q, "/tmp/t1.npy");
     for (int i = 0; i < t2.getSize(); i++) {
-        EXPECT_EQ(t2.getAccessorHostReadWrite()[i], i);
+        EXPECT_EQ(t2.getHostBuffer()[i], i);
     }
 
-    Tensor<int> t3(q, t2, false);
+    Tensor<int> t3(t2, false);
     for (int i = 0; i < t3.getSize(); i++) {
-        EXPECT_EQ(t3.getAccessorHostReadWrite()[i], i);
+        EXPECT_EQ(t3.getHostBuffer()[i], i);
     }
 
-    Tensor<int> t4(q, t2, true);
-    for (int i = 0; i < t4.getSize(); i++) {
-        EXPECT_EQ(t4.getAccessorHostReadWrite()[i], i);
+    {
+        t2.syncNonBlockingH2D();
+        Tensor<int> t4(t2, true);
+        for (int i = 0; i < t4.getSize(); i++) {
+            EXPECT_EQ(t4.getHostBuffer()[i], i);
+        }
     }
 
-    Tensor<int> t5({SIZE});
+    Tensor<int> t4(t2, false);
+    t1.syncNonBlockingH2D();
+    t2.syncNonBlockingH2D();
+    t3.syncNonBlockingH2D();
+    t4.syncNonBlockingH2D();
+
+    Tensor<int> t5(q, {SIZE});
     q.submit([&](sycl::handler &h) {
-                 sycl::accessor dt1 = t1.getAccessorDeviceRead(h);
-                 sycl::accessor dt2 = t2.getAccessorDeviceRead(h);
-                 sycl::accessor dt3 = t3.getAccessorDeviceRead(h);
-                 sycl::accessor dt4 = t4.getAccessorDeviceRead(h);
-                 sycl::accessor dt5 = t5.getAccessorDeviceWrite(h);
-
+                 auto dt1 = t1.getDeviceBuffer();
+                 auto dt2 = t2.getDeviceBuffer();
+                 auto dt3 = t3.getDeviceBuffer();
+                 auto dt4 = t4.getDeviceBuffer();
+                 auto dt5 = t5.getDeviceBuffer();
                  h.parallel_for(t1.getSize(), [=](auto i) {
                      dt5[i] = dt1[i] + dt2[i] + dt3[i] + dt4[i];
                  });
              }
     );
+    t5.syncNonBlockingD2H();
     q.wait();
     for (int i = 0; i < t5.getSize(); i++) {
-        EXPECT_EQ(t5.getAccessorHostReadWrite()[i], 4*i);
+        EXPECT_EQ(t5.getHostBuffer()[i], 4 * i);
     }
-    t5.save("/tmp/t5.npy");
-    t5.save( SIZE/2, SIZE/2,"/tmp/t5s.npy");
+    t5.saveHostToNpy("/tmp/t5.npy");
+    t5.saveHostToNpy(SIZE / 2, SIZE / 2, "/tmp/t5s.npy");
 
-    Tensor<int> t6 = Tensor<int>::load("/tmp/t5.npy");
+    Tensor<int> t6 = Tensor<int>::loadToHost(q, "/tmp/t5.npy");
     for (int i = 0; i < t6.getSize(); i++) {
-        EXPECT_EQ(t6.getAccessorHostReadWrite()[i], 4*i);
+        EXPECT_EQ(t6.getHostBuffer()[i], 4 * i);
     }
-    Tensor<int> t7 = Tensor<int>::load("/tmp/t5s.npy");
-    for (int i = 0; i < t7.getSize(); i++) {
-        EXPECT_EQ(t7.getAccessorHostReadWrite()[i], 4*(i+SIZE/2));
+    Tensor<int> t7 = Tensor<int>::loadToHost(q, "/tmp/t5s.npy");
+    for (int i = SIZE/2; i < t7.getSize(); i++) {
+        EXPECT_EQ(t7.getHostBuffer()[i - SIZE/2], 4 * i);
     }
 
     t6.reshape({8, 8});
     t6.reshape({4, 2, 8});
     EXPECT_EQ(t6.reshape({4, 2, 0}), std::vector<size_t>({4, 2, 8}));
     EXPECT_EQ(t6.reshape({0, 8}), std::vector<size_t>({8, 8}));
-
-    EXPECT_EQ(t6.getAccessorHostReadWrite(0)[1], t6.getAccessorHostReadWrite(1)[0]);
-    EXPECT_EQ(t6.getAccessorHostReadWrite(0)[5], t6.getAccessorHostReadWrite(5)[0]);
-    EXPECT_EQ(t6.getAccessorHostReadWrite(0)[2], t6.getAccessorHostReadWrite(1)[1]);
 
 }

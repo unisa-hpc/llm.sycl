@@ -21,46 +21,28 @@ namespace llmsycl::core {
 
         std::vector<size_t> maskZeros(const std::vector<size_t> &vec);
 
-        void internalSave(const std::string &npyFile);
+        void internalSaveHostToNpy(size_t offset, size_t lenWords, const std::string &npyFile);
 
     protected:
         std::vector<size_t> shape;
         const size_t sizeWords = 0;
+        sycl::queue &queue;
 
-        T *__restrict hBuff = nullptr; ///< Never modify this pointer directly. Only do it through a host accessor.
-        std::unique_ptr<sycl::buffer<T, 1>> dBuff;
-
-        inline auto getAccessorHost(size_t offset = 0) const {
-            /*
-            return sycl::host_accessor(*dBuff.get(), sycl::range<1>(dBuff->size() - offset), offset,
-                                       sycl::mode_tag_t<accessMode>());
-            */
-            auto a = sycl::host_accessor(*dBuff.get());
-            return a.get_pointer() + offset;
-        }
-
-        template<sycl::access::mode accessMode>
-        inline auto getAccessorDevice(sycl::handler &h, size_t offset = 0) const {
-            /*
-            return sycl::accessor(*dBuff.get(), h, sycl::range<1>(dBuff->size() - offset), offset,
-                                  sycl::mode_tag_t<accessMode>());
-                                  */
-            return dBuff.get()->template get_access<accessMode>(h, sycl::range<1>(dBuff->size() - offset), offset);
-
-        }
+        T * hBuff = nullptr;
+        T * dBuff = nullptr;
 
     public:
-        Tensor(const std::vector<size_t> &shape);
+        Tensor(sycl::queue &queue, const std::vector<size_t> &shape);
 
-        Tensor(std::vector<size_t> shape, std::vector<T> vecData);
+        Tensor(sycl::queue &queue, std::vector<size_t> shape, std::vector<T> vecData);
 
-        Tensor(std::vector<size_t> shape, const T *buff);
+        Tensor(sycl::queue &queue, std::vector<size_t> shape, const T *buff);
 
-        Tensor(sycl::queue &queue, Tensor &other, bool syncHostBufferWithDevice = false);
+        Tensor(Tensor &other, bool fromItsDeviceBuffer = false);
 
         ~Tensor();
 
-        void save(const std::string &npyFile);
+        void saveHostToNpy(const std::string &npyFile);
 
         std::vector<size_t> getShape() const;
 
@@ -78,53 +60,49 @@ namespace llmsycl::core {
          */
         std::vector<size_t> reshape(const std::vector<size_t> &newShape);
 
-        inline T* getAccessorHostReadWrite(size_t offset = 0) {
-            return getAccessorHost(offset);
+        static Tensor<T> loadToHost(sycl::queue &queue, std::string npyFile);
+
+        void syncBlockingD2H() {
+            queue.memcpy(hBuff, dBuff, sizeWords * sizeof(T));
         }
 
-        inline const T* getAccessorHostRead(size_t offset = 0) const {
-            return getAccessorHost(offset);
+        void syncBlockingH2D() {
+            queue.memcpy(dBuff, hBuff, sizeWords * sizeof(T));
         }
 
-        inline auto getAccessorDeviceRead(sycl::handler &h, size_t offset = 0) const {
-            return getAccessorDevice<sycl::access::mode::read>(h, offset);
+        void syncNonBlockingD2H() {
+            queue.memcpy(hBuff, dBuff, sizeWords * sizeof(T));
         }
 
-        inline auto getAccessorDeviceWrite(sycl::handler &h, size_t offset = 0) {
-            return getAccessorDevice<sycl::access::mode::write>(h, offset);
-        }
-
-        inline auto getAccessorDeviceReadWrite(sycl::handler &h, size_t offset = 0) {
-            return getAccessorDevice<sycl::access::mode::read_write>(h, offset);
-        }
-
-        static Tensor<T> load(std::string npyFile);
-
-        void forceD2H() {
-            std::memcpy(hBuff, getAccessorHostReadWrite(), sizeWords * sizeof(T));
+        void syncNonBlockingH2D() {
+            queue.memcpy(dBuff, hBuff, sizeWords * sizeof(T));
         }
 
         std::vector<T> toVector() {
             std::vector<T> vec;
             vec.resize(sizeWords);
-            forceD2H();
+            syncBlockingD2H();
             std::memcpy(vec.data(), hBuff, sizeWords * sizeof(T));
             return vec;
         }
 
-        void copyFromHostBlocking(sycl::queue &q, const T *hostBuff) {
-            q.submit([&](sycl::handler &h) {
-                auto acc = getAccessorDeviceWrite(h);
-                h.copy(hostBuff, acc);
-            });
-            q.wait();
+        T*& getHostBuffer() {
+            return hBuff;
         }
 
-        sycl::buffer<T, 1> &getDeviceBuff() {
-            return *dBuff.get();
+        const T* getHostBuffer() const {
+            return hBuff;
         }
 
-        void save(size_t offset, size_t lenWords, const std::string &npyFile);
+        T*& getDeviceBuffer() {
+            return dBuff;
+        }
+
+        const T* getDeviceBuffer() const {
+            return dBuff;
+        }
+
+        void saveHostToNpy(size_t offset, size_t lenWords, const std::string &npyFile);
     };
 
 

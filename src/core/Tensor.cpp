@@ -8,9 +8,9 @@
 using namespace llmsycl::core;
 
 template<typename T>
-Tensor<T> Tensor<T>::load(std::string npyFile) {
+Tensor<T> Tensor<T>::loadToHost(sycl::queue &queue, std::string npyFile) {
     auto npy = npy::read_npy<T>(npyFile);
-    return Tensor<T>(npy.shape, npy.data);
+    return Tensor<T>(queue, npy.shape, npy.data);
 }
 
 template<typename T>
@@ -44,40 +44,75 @@ std::string Tensor<T>::getShapeStr() const {
 }
 
 template<typename T>
-Tensor<T>::Tensor(const std::vector<size_t> &shape):
+Tensor<T>::Tensor(sycl::queue &queue, const std::vector<size_t> &shape):
         shape(shape),
-        sizeWords(getProduct(shape)) {
-    hBuff = new T[sizeWords];
+        sizeWords(getProduct(shape)),
+        queue(queue) {
+    // Malloc_host copies data elements through PCIe on each access, so it is slower when there are many accesses.
+    // It could be faster when you only access 10 elements for example, and then you dont need to copy the whole data.
+    // malloc_shared on the other hand, is managed by the compiler and it decides where to move the data around (as a whole).
+    // There is also a prefetch flag for malloc_shared to prefetch the data to the device.
+    // This could improve the performance but it could also hurt even more if the prefetched data is wrong or not needed.
+    // The safest bet is ALWAYS manual data movement between host and device.
+    // So, use C++ heap or if you want pinned memory; along with sycl::malloc_device.
+    // and move data with queue.memcpy().
+    // Just like in CUDA.
+    hBuff = new T[sizeWords]; // Dont use sycl::malloc_host.
     std::fill(hBuff, hBuff + sizeWords, 0);
-    dBuff = std::make_unique<sycl::buffer<T, 1>>(hBuff, sycl::range<1>(sizeWords));
+    dBuff = static_cast<T *>(sycl::malloc_device(sizeWords * sizeof(T), queue));
 }
 
 template<typename T>
-Tensor<T>::Tensor(std::vector<size_t> shape, std::vector<T> vecData):
+Tensor<T>::Tensor(sycl::queue &queue, std::vector<size_t> shape, std::vector<T> vecData):
         shape(shape),
-        sizeWords(getProduct(shape)) {
+        sizeWords(getProduct(shape)),
+        queue(queue)  {
     assert(sizeWords == vecData.size());
     hBuff = new T[sizeWords];
     std::memcpy(hBuff, vecData.data(), sizeWords * sizeof(T));
-    dBuff = std::make_unique<sycl::buffer<T, 1>>(hBuff, sycl::range<1>(sizeWords));
+    dBuff = static_cast<T *>(sycl::malloc_device(sizeWords * sizeof(T), queue));
 }
 
 template<typename T>
-Tensor<T>::Tensor(std::vector<size_t> shape, const T *buff):
+Tensor<T>::Tensor(sycl::queue &queue, std::vector<size_t> shape, const T *buff):
         shape(shape),
-        sizeWords(getProduct(shape)) {
+        sizeWords(getProduct(shape)),
+        queue(queue)  {
     hBuff = new T[sizeWords];
     std::memcpy(hBuff, buff, sizeWords * sizeof(T));
-    dBuff = std::make_unique<sycl::buffer<T, 1>>(hBuff, sycl::range<1>(sizeWords));
+    dBuff = static_cast<T *>(sycl::malloc_device(sizeWords * sizeof(T), queue));
 }
 
 template<typename T>
-void Tensor<T>::internalSave(const std::string &npyFile) {
+Tensor<T>::Tensor(Tensor &other, bool fromItsDeviceBuffer):
+        shape(other.shape),
+        sizeWords(other.sizeWords),
+        queue(other.queue){
+
+    // The idea is not to touch the other Tensor when we are creating one from it!
+    dBuff = static_cast<T *>(sycl::malloc_device(sizeWords * sizeof(T), queue));
+    if (fromItsDeviceBuffer) {
+        queue.memcpy(dBuff, other.dBuff, sizeWords * sizeof(T));
+    }
+    hBuff = new T[sizeWords];
+    if (fromItsDeviceBuffer) {
+        syncBlockingD2H();
+    } else {
+        std::memcpy(hBuff, other.hBuff, sizeWords * sizeof(T));
+    }
+}
+
+template<typename T>
+void Tensor<T>::internalSaveHostToNpy(size_t offset, size_t lenWords, const std::string &npyFile) {
     npy::npy_data<T> d;
 
+    if (offset + lenWords > sizeWords) {
+        throw std::invalid_argument("The given offset and lenWords are out of the range of this Tensor.");
+    }
+
     d.data.clear();
-    d.data.resize(sizeWords);
-    d.data.assign(hBuff, hBuff + sizeWords);
+    d.data.resize(lenWords);
+    d.data.assign(hBuff + offset, hBuff + offset + lenWords);
 
     d.shape = shape;
     d.fortran_order = false; // We don't want col-major.
@@ -110,58 +145,19 @@ std::vector<size_t> Tensor<T>::reshape(const std::vector<size_t> &newShape) {
 }
 
 template<typename T>
-void Tensor<T>::save(const std::string &npyFile) {
-    internalSave(npyFile);
+void Tensor<T>::saveHostToNpy(const std::string &npyFile) {
+    internalSaveHostToNpy(0, sizeWords, npyFile);
 }
 
 template<typename T>
-void Tensor<T>::save(size_t offset, size_t lenWords, const std::string &npyFile) {
-    auto hAcc = getAccessorHostReadWrite(offset);
-    std::vector<T> vec;
-    vec.resize(lenWords);
-    std::memcpy(vec.data(), hAcc, lenWords * sizeof(T));
-
-    {
-        npy::npy_data_ptr<T> d;
-        d.data_ptr = vec.data();
-        d.shape = {lenWords};
-        d.fortran_order = false;
-        npy::write_npy(npyFile, d);
-    }
-}
-
-template<typename T>
-Tensor<T>::Tensor(sycl::queue &queue, Tensor &other, bool syncHostBufferWithDevice):
-        shape(other.shape),
-        sizeWords(other.sizeWords) {
-
-    // perform a device to host only if requested.
-    if (syncHostBufferWithDevice) {
-        other.forceD2H();
-    }
-
-    // perform a host copy
-    hBuff = new T[sizeWords];
-    std::memcpy(hBuff, other.hBuff, sizeWords * sizeof(T));
-
-    // perform a device copy.
-    dBuff = std::make_unique<sycl::buffer<T, 1>>(hBuff, sycl::range<1>(sizeWords));
-    queue.submit([&](sycl::handler &cgh) {
-        // Specify the accessors for the buffers
-        auto acc1 = other.dBuff->template get_access<sycl::access::mode::read>(cgh);
-        auto acc2 = dBuff->template get_access<sycl::access::mode::write>(cgh);
-
-        // Perform the copy operation
-        cgh.copy(acc1, acc2);
-    });
+void Tensor<T>::saveHostToNpy(size_t offset, size_t lenWords, const std::string &npyFile) {
+    internalSaveHostToNpy(offset, lenWords, npyFile);
 }
 
 template<typename T>
 Tensor<T>::~Tensor() {
-    // Without explicitly releasing the sycl buffer, the program will crash
-    // (because sycl will try to copy stuff into hBuff which is already deleted).
-    dBuff.reset();
-    delete[] hBuff;
+    delete [] hBuff;
+    sycl::free(dBuff, queue);
 }
 
 template
@@ -177,22 +173,25 @@ template
 class llmsycl::core::Tensor<float>;
 
 void llmsycl::core::fillTensorWithRandomData(Tensor<float> &t) {
-    auto acc = t.getAccessorHostReadWrite();
+    auto p = t.getHostBuffer();
     for (size_t i = 0; i < t.getSize(); i++) {
-        acc[i] = (float) rand() / (float) RAND_MAX;
+        p[i] = (float) rand() / (float) RAND_MAX;
     }
+    t.syncBlockingH2D();
 }
 
 void llmsycl::core::fillTensorWith(Tensor<float> &t, float val) {
-    auto acc = t.getAccessorHostReadWrite();
+    auto p = t.getHostBuffer();
     for (size_t i = 0; i < t.getSize(); i++) {
-        acc[i] = val;
+        p[i] = val;
     }
+    t.syncBlockingH2D();
 }
 
 void llmsycl::core::fillTensorWithRandomData(Tensor<int> &t, int valUpperLimit) {
-    auto acc = t.getAccessorHostReadWrite();
+    auto p = t.getHostBuffer();
     for (size_t i = 0; i < t.getSize(); i++) {
-        acc[i] = rand() % valUpperLimit;
+        p[i] = rand() % valUpperLimit;
     }
+    t.syncBlockingH2D();
 }
