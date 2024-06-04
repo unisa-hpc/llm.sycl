@@ -120,6 +120,7 @@ namespace llmsycl::core {
          * @brief Sync the device buffer to the host buffer in a blocking manner.
          */
         void syncBlockingD2H() {
+            queue.wait_and_throw();
             queue.memcpy(hBuff, dBuff, sizeWords * sizeof(T));
             queue.wait_and_throw();
         }
@@ -128,6 +129,7 @@ namespace llmsycl::core {
          * @brief Sync the host buffer to the device buffer in a blocking manner.
          */
         void syncBlockingH2D() {
+            queue.wait_and_throw();
             queue.memcpy(dBuff, hBuff, sizeWords * sizeof(T));
             queue.wait_and_throw();
         }
@@ -159,10 +161,10 @@ namespace llmsycl::core {
         }
 
         /**
-         * @brief Get a reference pointer to the host buffer.
-         * @return A reference pointer to the host buffer.
+         * @brief Get a pointer to the host buffer.
+         * @return A pointer to the host buffer.
          */
-        T*& getHostBuffer() {
+        T* getHostBuffer() {
             return hBuff;
         }
         /**
@@ -174,10 +176,10 @@ namespace llmsycl::core {
         }
 
         /**
-         * @brief Get a reference pointer to the device buffer.
-         * @return A reference pointer to the device buffer.
+         * @brief Get a pointer to the device buffer.
+         * @return A pointer to the device buffer.
          */
-        T*& getDeviceBuffer() {
+        T* getDeviceBuffer() {
             return dBuff;
         }
 

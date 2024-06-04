@@ -7,6 +7,8 @@
 #include "core/Tensor.h"
 #include <sycl/sycl.hpp>
 
+#include <oneapi/mkl.hpp>
+
 using namespace std;
 
 // Create an exception handler for asynchronous SYCL exceptions
@@ -24,7 +26,14 @@ inline void initSycl(sycl::queue &outQ) {
             }
         }
     };
-    outQ = sycl::queue(sycl::default_selector_v, asycExceptionHandler, sycl::property::queue::enable_profiling());
+    outQ = sycl::queue(
+            sycl::default_selector_v,
+            asycExceptionHandler,
+            {
+                    sycl::property::queue::enable_profiling(),
+                    //sycl::property::queue::in_order()
+            }
+    );
     logger->info("SYCL queue initialized.");
     logger->info("Device Name: {}", outQ.get_device().get_info<sycl::info::device::name>());
     logger->info("Global Memory: {}", outQ.get_device().get_info<sycl::info::device::global_mem_size>());
@@ -95,13 +104,102 @@ TEST(tensor, Basic01) {
         EXPECT_EQ(t6.getHostBuffer()[i], 4 * i);
     }
     Tensor<int> t7 = Tensor<int>::loadToHost(q, "/tmp/t5s.npy");
-    for (int i = SIZE/2; i < t7.getSize(); i++) {
-        EXPECT_EQ(t7.getHostBuffer()[i - SIZE/2], 4 * i);
+    for (int i = SIZE / 2; i < t7.getSize(); i++) {
+        EXPECT_EQ(t7.getHostBuffer()[i - SIZE / 2], 4 * i);
     }
 
     t6.reshape({8, 8});
     t6.reshape({4, 2, 8});
     EXPECT_EQ(t6.reshape({4, 2, 0}), std::vector<size_t>({4, 2, 8}));
     EXPECT_EQ(t6.reshape({0, 8}), std::vector<size_t>({8, 8}));
+
+}
+
+TEST(dependenciesInUSM, basic01) {
+    using namespace llmsycl::core;
+    sycl::queue q;
+    initSycl(q);
+
+    constexpr int SIZE = 1024*1024*256;
+
+    Tensor<float> t0(q, {SIZE});
+    Tensor<float> t1(q, {SIZE});
+    Tensor<float> t2(q, {SIZE});
+    Tensor<float> t3(q, {SIZE});
+    Tensor<float> t4(q, {SIZE});
+    Tensor<float> t4Gold(q, {SIZE});
+
+    fillTensorWithRandomData(t0);
+    fillTensorWithRandomData(t1);
+    fillTensorWithRandomData(t2);
+
+    q.submit([&](sycl::handler &h) {
+        auto dT0 = t0.getDeviceBuffer();
+        auto dT1 = t1.getDeviceBuffer();
+        auto dT3 = t3.getDeviceBuffer();
+        h.parallel_for(sycl::range<1>(SIZE), [=](sycl::id<1> i) {
+            dT3[i] = dT0[i] + dT1[i];
+        });
+    });
+    q.submit([&](sycl::handler &h) {
+        auto dT1 = t1.getDeviceBuffer();
+        auto dT2 = t2.getDeviceBuffer();
+        auto dT4 = t4.getDeviceBuffer();
+        h.parallel_for(sycl::range<1>(SIZE), [=](sycl::id<1> i) {
+            dT4[i] = dT1[i] + dT2[i];
+        });
+    });
+
+    oneapi::mkl::blas::column_major::axpy(
+            q,
+            SIZE,
+            1.0f,
+            t0.getDeviceBuffer(),
+            1,
+            t4.getDeviceBuffer(),
+            1,
+            {}
+    );
+    oneapi::mkl::blas::column_major::axpy(
+            q,
+            SIZE,
+            1.0f,
+            t0.getDeviceBuffer(),
+            1,
+            t4.getDeviceBuffer(),
+            1,
+            {}
+    );
+
+    q.submit([&](sycl::handler &h) {
+        auto dT3 = t3.getDeviceBuffer();
+        auto dT4 = t4.getDeviceBuffer();
+        h.parallel_for(sycl::range<1>(SIZE), [=](sycl::id<1> i) {
+            dT4[i] += dT3[i];
+        });
+    });
+
+    t4.syncBlockingD2H();
+
+    auto pT4 = t4.getHostBuffer();
+    auto pT4Gold = t4Gold.getHostBuffer();
+
+    auto pT0 = t0.getHostBuffer();
+    auto pT1 = t1.getHostBuffer();
+    auto pT2 = t2.getHostBuffer();
+
+    for (int i = 0; i < SIZE; i++) {
+        pT4Gold[i] = pT1[i] + pT2[i] + pT0[i] + pT0[i]  + pT0[i] + pT1[i];
+    }
+
+    for (int i = 0; i < SIZE; i++) {
+        EXPECT_NEAR(pT4[i], pT4Gold[i], 1e-4);
+    }
+
+    /**
+     * Morale of the story:
+     *   - USM handles dependencies automatically even for OoO queues.
+     *   - This also works for oneMKL calls.
+     */
 
 }

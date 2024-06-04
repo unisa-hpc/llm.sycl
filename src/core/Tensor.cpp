@@ -117,7 +117,8 @@ void Tensor<T>::internalSaveHostToNpy(size_t offset, size_t lenWords, const std:
     d.data.resize(lenWords);
     d.data.assign(hBuff + offset, hBuff + offset + lenWords);
 
-    d.shape = shape;
+    ///TODO: Add the shape to the npy file.
+    d.shape = {lenWords};
     d.fortran_order = false; // We don't want col-major.
     npy::write_npy(npyFile, d);
 }
