@@ -12,7 +12,7 @@ target_sources(kernels
         #${CMAKE_CURRENT_LIST_DIR}/AttentionCpu.cpp
         ${CMAKE_CURRENT_LIST_DIR}/Permute.cpp
         ${CMAKE_CURRENT_LIST_DIR}/Unpermute.cpp
-        #${CMAKE_CURRENT_LIST_DIR}/Softmax.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/Softmax.cpp
         ${CMAKE_CURRENT_LIST_DIR}/MatmulBias.cpp
         ${CMAKE_CURRENT_LIST_DIR}/Residual.cpp
         ${CMAKE_CURRENT_LIST_DIR}/Gelu.cpp
@@ -25,7 +25,7 @@ target_sources(kernels
         #${CMAKE_CURRENT_LIST_DIR}/AttentionCpu.h
         ${CMAKE_CURRENT_LIST_DIR}/Permute.h
         ${CMAKE_CURRENT_LIST_DIR}/Unpermute.h
-        #${CMAKE_CURRENT_LIST_DIR}/Softmax.h
+        ${CMAKE_CURRENT_LIST_DIR}/Softmax.h
         ${CMAKE_CURRENT_LIST_DIR}/MatmulBias.h
         ${CMAKE_CURRENT_LIST_DIR}/Residual.h
         ${CMAKE_CURRENT_LIST_DIR}/Gelu.h

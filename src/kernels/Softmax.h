@@ -19,34 +19,28 @@ namespace llmsycl::kernels {
 
     public:
         Softmax(
-                core::Tensor<float> &tnOut,
-                size_t outOffset,
-                core::Tensor<float> &tnInp,
-                size_t inpOffset,
+                float *dOut,
+                const float *dInp,
                 float invTemperature,
                 int N, int C
         ) :
                 BaseKernel("Softmax"),
-                tnOut(tnOut),
-                outOffset(outOffset),
-                tnInp(tnInp),
-                inpOffset(inpOffset),
+                dOut(dOut),
+                dInp(dInp),
                 invTemperature(invTemperature),
                 N(N), C(C) {
 
-            addTensorDetailsToReport("tnOut", tnOut);
-            addTensorDetailsToReport("tnInp", tnInp);
             addScalarParamToReport("invTemperature", invTemperature);
             addScalarParamToReport("N", N);
             addScalarParamToReport("C", C);
 
         }
 
-        sycl::event Launch(sycl::queue &q, int blockSize) override {
+        std::vector<sycl::event> Launch(sycl::queue &q, int blockSize) override {
             auto event = q.submit([&](sycl::handler &h) {
 
-                auto accTnOut = tnOut.getAccessorDeviceWrite(h, outOffset);
-                auto accTnInp = tnInp.getAccessorDeviceRead(h, inpOffset);
+                auto capturedOut = dOut;
+                auto capturedInp = dInp;
 
                 const int capturedN = this->N;
                 const int capturedC = this->C;
@@ -55,7 +49,7 @@ namespace llmsycl::kernels {
                 h.parallel_for(
                         ///TODO: Check this coef 32 in the worksize. Is it correct?
                         sycl::nd_range<1>(
-                                sycl::range<1>(Helpers::MakeDivisible(N*C, blockSize)),
+                                sycl::range<1>(Helpers::MakeDivisible(N, blockSize)),
                                 sycl::range<1>(blockSize)
                         ),
                         [=](sycl::nd_item<1> item) {
@@ -73,36 +67,31 @@ namespace llmsycl::kernels {
                                 float maxval = -INFINITY;
                                 double sum = 0.0;
                                 for (int j = 0; j < capturedC; j++) {
-                                    float maxval_prev = maxval;
-                                    if (accTnInp[i*capturedC+j] > maxval) {
-                                        maxval = accTnInp[i*capturedC+j];
-                                        sum = sum *
-                                                sycl::exp((maxval_prev - maxval) * capturedInvTemp) +
-                                                sycl::exp((accTnInp[i*capturedC+j] - maxval) * capturedInvTemp);
-                                    }
-                                    else {
-                                        sum += sycl::exp((accTnInp[i*capturedC+j] - maxval) * capturedInvTemp);
+                                    if (capturedInp[i*capturedC+j] > maxval) {
+                                        maxval = capturedInp[i*capturedC+j];
                                     }
                                 }
+                                for (int j = 0; j < capturedC; j++) {
+                                    sum += sycl::exp((capturedInp[i*capturedC+j] - maxval) * capturedInvTemp);
+                                    capturedOut[i*capturedC+j] = (float) sum;
+                                }
+                                auto sumInverse = sum == 0.0 ?
+                                        0.0 :
+                                        1.0/sum;
 
                                 for (int j = 0; j < capturedC; j++) {
-                                    accTnOut[i*capturedC+j] =
-                                            sycl::exp((accTnInp[i*capturedC+j] - maxval) * capturedInvTemp) / sum;
+                                    capturedOut[i*capturedC+j] *= (j > i/capturedC) ? 0 : capturedOut[i*capturedC+j] * (float)sumInverse;
                                 }
                             }
-
-
                         });
             });
             report();
-            return event;
+            return {event};
         }
 
     private:
-        core::Tensor<float> &tnOut;
-        const size_t outOffset;
-        core::Tensor<float> &tnInp;
-        const size_t inpOffset;
+        float *dOut;
+        const float *dInp;
 
         const float invTemperature;
         const int N, C;
