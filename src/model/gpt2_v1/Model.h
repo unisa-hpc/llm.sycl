@@ -96,7 +96,7 @@ namespace llmsycl::model {
         constexpr static int GPT2_EOT = 50256;
     public:
 
-        void loadCheckpoint(const std::string &checkpointPath) {
+        void loadCheckpoint(sycl::queue &queue, const std::string &checkpointPath) {
             // read in model from a checkpoint file
             FILE *model_file = fopenCheck(checkpointPath.c_str(), "rb");
             int model_header[256];
@@ -165,82 +165,98 @@ namespace llmsycl::model {
                 size_t offsetAccumulator = 0;
 
                 // 0
-                wte = std::make_unique<core::Tensor<float>>(std::vector({param_sizes[0]}),
+                wte = std::make_unique<core::Tensor<float>>(queue,
+                                                            std::vector({param_sizes[0]}),
                                                             params_memory_cpu + offsetAccumulator);
                 offsetAccumulator += param_sizes[0];
 
                 // 1
-                wpe = std::make_unique<core::Tensor<float>>(std::vector({param_sizes[1]}),
+                wpe = std::make_unique<core::Tensor<float>>(queue,
+                                                            std::vector({param_sizes[1]}),
                                                             params_memory_cpu + offsetAccumulator);
                 offsetAccumulator += param_sizes[1];
 
                 // 2
-                ln1w = std::make_unique<core::Tensor<float>>(std::vector({param_sizes[2]}),
+                ln1w = std::make_unique<core::Tensor<float>>(queue,
+                                                             std::vector({param_sizes[2]}),
                                                              params_memory_cpu + offsetAccumulator);
                 offsetAccumulator += param_sizes[2];
 
                 // 3
-                ln1b = std::make_unique<core::Tensor<float>>(std::vector({param_sizes[3]}),
+                ln1b = std::make_unique<core::Tensor<float>>(queue,
+                                                             std::vector({param_sizes[3]}),
                                                              params_memory_cpu + offsetAccumulator);
                 offsetAccumulator += param_sizes[3];
 
                 // 4
-                qkvw = std::make_unique<core::Tensor<float>>(std::vector({param_sizes[4]}),
+                qkvw = std::make_unique<core::Tensor<float>>(queue,
+                                                             std::vector({param_sizes[4]}),
                                                              params_memory_cpu + offsetAccumulator);
                 offsetAccumulator += param_sizes[4];
 
                 // 5
-                qkvb = std::make_unique<core::Tensor<float>>(std::vector({param_sizes[5]}),
+                qkvb = std::make_unique<core::Tensor<float>>(queue,
+                                                             std::vector({param_sizes[5]}),
                                                              params_memory_cpu + offsetAccumulator);
                 offsetAccumulator += param_sizes[5];
 
                 // 6
-                attprojw = std::make_unique<core::Tensor<float>>(std::vector({param_sizes[6]}),
+                attprojw = std::make_unique<core::Tensor<float>>(queue,
+                                                                 std::vector({param_sizes[6]}),
                                                                  params_memory_cpu + offsetAccumulator);
                 offsetAccumulator += param_sizes[6];
 
                 // 7
-                attprojb = std::make_unique<core::Tensor<float>>(std::vector({param_sizes[7]}),
+                attprojb = std::make_unique<core::Tensor<float>>(queue,
+                                                                 std::vector({param_sizes[7]}),
                                                                  params_memory_cpu + offsetAccumulator);
                 offsetAccumulator += param_sizes[7];
 
                 // 8
-                ln2w = std::make_unique<core::Tensor<float>>(std::vector({param_sizes[8]}),
+                ln2w = std::make_unique<core::Tensor<float>>(queue,
+                                                             std::vector({param_sizes[8]}),
                                                              params_memory_cpu + offsetAccumulator);
                 offsetAccumulator += param_sizes[8];
 
                 // 9
-                ln2b = std::make_unique<core::Tensor<float>>(std::vector({param_sizes[9]}),
+                ln2b = std::make_unique<core::Tensor<float>>(queue,
+                                                             std::vector({param_sizes[9]}),
                                                              params_memory_cpu + offsetAccumulator);
                 offsetAccumulator += param_sizes[9];
 
                 // 10
-                fcw = std::make_unique<core::Tensor<float>>(std::vector({param_sizes[10]}),
+                fcw = std::make_unique<core::Tensor<float>>(queue,
+                                                            std::vector({param_sizes[10]}),
                                                             params_memory_cpu + offsetAccumulator);
                 offsetAccumulator += param_sizes[10];
 
                 // 11
-                fcb = std::make_unique<core::Tensor<float>>(std::vector({param_sizes[11]}),
+                fcb = std::make_unique<core::Tensor<float>>(queue,
+                                                            std::vector({param_sizes[11]}),
                                                             params_memory_cpu + offsetAccumulator);
                 offsetAccumulator += param_sizes[11];
 
                 // 12
-                fcprojw = std::make_unique<core::Tensor<float>>(std::vector({param_sizes[12]}),
+                fcprojw = std::make_unique<core::Tensor<float>>(queue,
+                                                                std::vector({param_sizes[12]}),
                                                                 params_memory_cpu + offsetAccumulator);
                 offsetAccumulator += param_sizes[12];
 
                 // 13
-                fcprojb = std::make_unique<core::Tensor<float>>(std::vector({param_sizes[13]}),
+                fcprojb = std::make_unique<core::Tensor<float>>(queue,
+                                                                std::vector({param_sizes[13]}),
                                                                 params_memory_cpu + offsetAccumulator);
                 offsetAccumulator += param_sizes[13];
 
                 // 14
-                lnfw = std::make_unique<core::Tensor<float>>(std::vector({param_sizes[14]}),
+                lnfw = std::make_unique<core::Tensor<float>>(queue,
+                                                             std::vector({param_sizes[14]}),
                                                              params_memory_cpu + offsetAccumulator);
                 offsetAccumulator += param_sizes[14];
 
                 // 15
-                lnfb = std::make_unique<core::Tensor<float>>(std::vector({param_sizes[15]}),
+                lnfb = std::make_unique<core::Tensor<float>>(queue,
+                                                             std::vector({param_sizes[15]}),
                                                              params_memory_cpu + offsetAccumulator);
                 offsetAccumulator += param_sizes[15];
 
@@ -371,67 +387,67 @@ namespace llmsycl::model {
 
                     // No need to copy data here, just allocate memory.
                     // 0
-                    encoded = std::make_unique<core::Tensor<float>>(std::vector({act_sizes[0]}));
+                    encoded = std::make_unique<core::Tensor<float>>(q, std::vector({act_sizes[0]}));
 
                     // 1
-                    ln1 = std::make_unique<core::Tensor<float>>(std::vector({act_sizes[1]}));
+                    ln1 = std::make_unique<core::Tensor<float>>(q, std::vector({act_sizes[1]}));
 
                     // 2
-                    ln1_mean = std::make_unique<core::Tensor<float>>(std::vector({act_sizes[2]}));
+                    ln1_mean = std::make_unique<core::Tensor<float>>(q, std::vector({act_sizes[2]}));
 
                     // 3
-                    ln1_rstd = std::make_unique<core::Tensor<float>>(std::vector({act_sizes[3]}));
+                    ln1_rstd = std::make_unique<core::Tensor<float>>(q, std::vector({act_sizes[3]}));
 
                     // 4
-                    atty = std::make_unique<core::Tensor<float>>(std::vector({act_sizes[4]}));
+                    atty = std::make_unique<core::Tensor<float>>(q, std::vector({act_sizes[4]}));
 
                     // 5
-                    att = std::make_unique<core::Tensor<float>>(std::vector({act_sizes[5]}));
+                    att = std::make_unique<core::Tensor<float>>(q, std::vector({act_sizes[5]}));
 
                     // 6
-                    attproj = std::make_unique<core::Tensor<float>>(std::vector({act_sizes[6]}));
+                    attproj = std::make_unique<core::Tensor<float>>(q, std::vector({act_sizes[6]}));
 
                     // 7
-                    residual2 = std::make_unique<core::Tensor<float>>(std::vector({act_sizes[7]}));
+                    residual2 = std::make_unique<core::Tensor<float>>(q, std::vector({act_sizes[7]}));
 
                     // 8
-                    ln2 = std::make_unique<core::Tensor<float>>(std::vector({act_sizes[8]}));
+                    ln2 = std::make_unique<core::Tensor<float>>(q, std::vector({act_sizes[8]}));
 
                     // 9
-                    ln2_mean = std::make_unique<core::Tensor<float>>(std::vector({act_sizes[9]}));
+                    ln2_mean = std::make_unique<core::Tensor<float>>(q, std::vector({act_sizes[9]}));
 
                     // 10
-                    ln2_rstd = std::make_unique<core::Tensor<float>>(std::vector({act_sizes[10]}));
+                    ln2_rstd = std::make_unique<core::Tensor<float>>(q, std::vector({act_sizes[10]}));
 
                     // 11
-                    fch = std::make_unique<core::Tensor<float>>(std::vector({act_sizes[11]}));
+                    fch = std::make_unique<core::Tensor<float>>(q, std::vector({act_sizes[11]}));
 
                     // 12
-                    fch_gelu = std::make_unique<core::Tensor<float>>(std::vector({act_sizes[12]}));
+                    fch_gelu = std::make_unique<core::Tensor<float>>(q, std::vector({act_sizes[12]}));
 
                     // 13
-                    fcproj = std::make_unique<core::Tensor<float>>(std::vector({act_sizes[13]}));
+                    fcproj = std::make_unique<core::Tensor<float>>(q, std::vector({act_sizes[13]}));
 
                     // 14
-                    residual3 = std::make_unique<core::Tensor<float>>(std::vector({act_sizes[14]}));
+                    residual3 = std::make_unique<core::Tensor<float>>(q, std::vector({act_sizes[14]}));
 
                     // 15
-                    lnf = std::make_unique<core::Tensor<float>>(std::vector({act_sizes[15]}));
+                    lnf = std::make_unique<core::Tensor<float>>(q, std::vector({act_sizes[15]}));
 
                     // 16
-                    lnf_mean = std::make_unique<core::Tensor<float>>(std::vector({act_sizes[16]}));
+                    lnf_mean = std::make_unique<core::Tensor<float>>(q, std::vector({act_sizes[16]}));
 
                     // 17
-                    lnf_rstd = std::make_unique<core::Tensor<float>>(std::vector({act_sizes[17]}));
+                    lnf_rstd = std::make_unique<core::Tensor<float>>(q, std::vector({act_sizes[17]}));
 
                     // 18
-                    losses = std::make_unique<core::Tensor<float>>(std::vector({act_sizes[18]}));
+                    losses = std::make_unique<core::Tensor<float>>(q, std::vector({act_sizes[18]}));
 
                     // 19
-                    qkvr = std::make_unique<core::Tensor<float>>(std::vector({act_sizes[19]}));
+                    qkvr = std::make_unique<core::Tensor<float>>(q, std::vector({act_sizes[19]}));
 
                     // 20
-                    output = std::make_unique<core::Tensor<float>>(std::vector({act_sizes[20]}));
+                    output = std::make_unique<core::Tensor<float>>(q, std::vector({act_sizes[20]}));
                 }
                 logger->info("allocated {} MiB for activations", (num_activations * sizeof(float)) >> 20);
 
@@ -445,28 +461,37 @@ namespace llmsycl::model {
             }
 
             // copy inputs/targets to the model
-            this->inputs = std::make_unique<core::Tensor<int>>(std::vector<size_t>({(size_t) B*T}), inputs);
-            if (targets != nullptr) this->targets = std::make_unique<core::Tensor<int>>(std::vector<size_t>({(size_t) B*T}), targets);
+            this->inputs = std::make_unique<core::Tensor<int>>(q, std::vector<size_t>({(size_t) B * T}), inputs);
+            if (targets != nullptr)
+                this->targets = std::make_unique<core::Tensor<int>>(q, std::vector<size_t>({(size_t) B * T}), targets);
 
             /// TODO: Check if tensor cloning is needed here.
             ///             ParameterTensors params = model->params; // for brevity
             ///             ActivationTensors acts = model->acts;
 
 
-            wte->save(0, V*C, "/tmp/c00.wte_uut.npy");
-            wpe->save(0, max_seq_len*C, "/tmp/c00.wpe_uut.npy");
-            this->inputs->save(0, B*T, "/tmp/c00.inp_uut.npy");
+
+            wte->syncBlockingD2H();
+            wte->saveHostToNpy(0, V * C, "/tmp/c00.wte_uut.npy");
+
+            wpe->syncBlockingD2H();
+            wpe->saveHostToNpy(0, max_seq_len * C, "/tmp/c00.wpe_uut.npy");
+
+            this->inputs->syncBlockingD2H();
+            this->inputs->saveHostToNpy(0, B * T, "/tmp/c00.inp_uut.npy");
 
             // encoding goes into residual[0]
             kernels::EncoderKernel encoderKernel(
-                    *encoded, 0,
-                    *this->inputs, 0,
-                    *wte, 0,
-                    *wpe, 0,
+                    encoded->getDeviceBuffer(),
+                    this->inputs->getDeviceBuffer(),
+                    wte->getDeviceBuffer(),
+                    wpe->getDeviceBuffer(),
                     B, T, C
             );
             encoderKernel.Launch(q, 512);
-            encoded->save(0, B*T*C, "/tmp/c01_uut.npy");
+
+            encoded->syncBlockingD2H();
+            encoded->saveHostToNpy(0, B * T * C, "/tmp/c01_uut.npy");
 
             size_t
                     offset_ln1w = 0,
@@ -512,7 +537,8 @@ namespace llmsycl::model {
                     // In short, for l==2 and onwards, we can pile-up the offset each time.
                     residual_offset += B * T * C;
                 }
-                residual->save(residual_offset, B*T*C, "/tmp/c02.l"+std::to_string(l)+"_uut.npy");
+                residual->syncBlockingD2H();
+                residual->saveHostToNpy(residual_offset, B * T * C, "/tmp/c02.l" + std::to_string(l) + "_uut.npy");
                 /// ------------------------------
 
                 // get the pointers of the weights for this layer
@@ -589,18 +615,24 @@ namespace llmsycl::model {
                     )
                     */
                     kernels::LayerNorm kernel(
-                            *ln1, offset_ln1,
-                            *ln1_mean, offset_ln1_mean,
-                            *ln1_rstd, offset_ln1_rstd,
-                            *residual, residual_offset,
-                            *ln1w, offset_ln1w,
-                            *ln1b, offset_ln1b,
+                            ln1->getDeviceBuffer() + offset_ln1,
+                            ln1_mean->getDeviceBuffer() + offset_ln1_mean,
+                            ln1_rstd->getDeviceBuffer() + offset_ln1_rstd,
+                            residual->getDeviceBuffer() + residual_offset,
+                            ln1w->getDeviceBuffer() + offset_ln1w,
+                            ln1b->getDeviceBuffer() + offset_ln1b,
                             B, T, C
                     );
                     kernel.Launch(q, 512);
-                    ln1->save(offset_ln1, B*T*C, "/tmp/c03.l"+std::to_string(l)+"_uut.npy");
-                    ln1_mean->save(offset_ln1_mean, B*T, "/tmp/c04.l"+std::to_string(l)+"_uut.npy");
-                    ln1_rstd->save(offset_ln1_rstd, B*T, "/tmp/c05.l"+std::to_string(l)+"_uut.npy");
+
+                    ln1->syncBlockingD2H();
+                    ln1->saveHostToNpy(offset_ln1, B * T * C, "/tmp/c03.l" + std::to_string(l) + "_uut.npy");
+
+                    ln1_mean->syncBlockingD2H();
+                    ln1_mean->saveHostToNpy(offset_ln1_mean, B * T, "/tmp/c04.l" + std::to_string(l) + "_uut.npy");
+
+                    ln1_rstd->syncBlockingD2H();
+                    ln1_rstd->saveHostToNpy(offset_ln1_rstd, B * T, "/tmp/c05.l" + std::to_string(l) + "_uut.npy");
                 }
 
                 {
@@ -631,14 +663,16 @@ namespace llmsycl::model {
                     )
                     */
                     kernels::MatmulBias kernel(
-                            *scratch, 0,
-                            *ln1, offset_ln1,
-                            *qkvw, offset_qkvw,
-                            *qkvb, offset_qkvb,
+                            scratch->getDeviceBuffer() + 0,
+                            ln1->getDeviceBuffer() + offset_ln1,
+                            qkvw->getDeviceBuffer() + offset_qkvw,
+                            qkvb->getDeviceBuffer() + offset_qkvb,
                             B, T, C, 3 * C
                     );
                     kernel.Launch(q, 512);
-                    scratch->save(0, B*T*(3*C), "/tmp/c06.l"+std::to_string(l)+"_uut.npy");
+
+                    scratch->syncBlockingD2H();
+                    scratch->saveHostToNpy(0, B * T * (3 * C), "/tmp/c06.l" + std::to_string(l) + "_uut.npy");
                 }
 
                 {
@@ -670,15 +704,21 @@ namespace llmsycl::model {
                     /// atty and att are wrong.
                     /// qkvr is correct.
                     kernels::Attention kernel(
-                            *atty, offset_atty,
-                            *qkvr, offset_qkvr,
-                            *att, offset_att,
-                            *scratch, 0,
+                            atty->getDeviceBuffer() + offset_atty,
+                            qkvr->getDeviceBuffer() + offset_qkvr,
+                            att->getDeviceBuffer() + offset_att,
+                            scratch->getDeviceBuffer() + 0,
                             B, T, C, NH, 256);
                     kernel.Launch(q, 512);
-                    atty->save(offset_atty, B*T*C, "/tmp/c07.l"+std::to_string(l)+"_uut.npy");
-                    qkvr->save(offset_qkvr, B*T*(3*C), "/tmp/c08.l"+std::to_string(l)+"_uut.npy");
-                    att->save(offset_att, B * NH * T * T, "/tmp/c09.l"+std::to_string(l)+"_uut.npy");
+
+                    atty->syncBlockingD2H();
+                    atty->saveHostToNpy(offset_atty, B * T * C, "/tmp/c07.l" + std::to_string(l) + "_uut.npy");
+
+                    qkvr->syncBlockingD2H();
+                    qkvr->saveHostToNpy(offset_qkvr, B * T * (3 * C), "/tmp/c08.l" + std::to_string(l) + "_uut.npy");
+
+                    att->syncBlockingD2H();
+                    att->saveHostToNpy(offset_att, B * NH * T * T, "/tmp/c09.l" + std::to_string(l) + "_uut.npy");
                 }
 
                 {
@@ -704,10 +744,10 @@ namespace llmsycl::model {
                     )
                     */
                     kernels::MatmulBias kernel(
-                            *attproj, offset_attproj,
-                            *atty, offset_atty,
-                            *attprojw, offset_attprojw,
-                            *attprojb, offset_attprojb,
+                            attproj->getDeviceBuffer() + offset_attproj,
+                            atty->getDeviceBuffer() + offset_atty,
+                            attprojw->getDeviceBuffer() + offset_attprojw,
+                            attprojb->getDeviceBuffer() + offset_attprojb,
                             B, T, C, C
                     );
                     kernel.Launch(q, 512);
@@ -727,9 +767,9 @@ namespace llmsycl::model {
                             int N );
                      */
                     kernels::Residual kernel(
-                            *residual2, offset_residual2,
-                            *residual, residual_offset,
-                            *attproj, offset_attproj,
+                            residual2->getDeviceBuffer() + offset_residual2,
+                            residual->getDeviceBuffer() + residual_offset,
+                            attproj->getDeviceBuffer() + offset_attproj,
                             B * T * C);
                     kernel.Launch(q, 512);
                 }
@@ -763,12 +803,12 @@ namespace llmsycl::model {
                     )
                     */
                     kernels::LayerNorm kernel(
-                            *ln2, offset_ln2,
-                            *ln2_mean, offset_ln2_mean,
-                            *ln2_rstd, offset_ln2_rstd,
-                            *residual2, offset_residual2,
-                            *ln2w, offset_ln2w,
-                            *ln2b, offset_ln2b,
+                            ln2->getDeviceBuffer() + offset_ln2,
+                            ln2_mean->getDeviceBuffer() + offset_ln2_mean,
+                            ln2_rstd->getDeviceBuffer() + offset_ln2_rstd,
+                            residual2->getDeviceBuffer() + offset_residual2,
+                            ln2w->getDeviceBuffer() + offset_ln2w,
+                            ln2b->getDeviceBuffer() + offset_ln2b,
                             B, T, C
                     );
                     kernel.Launch(q, 512);
@@ -798,10 +838,10 @@ namespace llmsycl::model {
                     */
 
                     kernels::MatmulBias kernel(
-                            *fch, offset_fch,
-                            *ln2, offset_ln2,
-                            *fcw, offset_fcw,
-                            *fcb, offset_fcb,
+                            fch->getDeviceBuffer() + offset_fch,
+                            ln2->getDeviceBuffer() + offset_ln2,
+                            fcw->getDeviceBuffer() + offset_fcw,
+                            fcb->getDeviceBuffer() + offset_fcb,
                             B, T, C, 4 * C
                     );
                     kernel.Launch(q, 512);
@@ -819,8 +859,8 @@ namespace llmsycl::model {
                         int N)
                     */
                     kernels::Gelu kernel(
-                            *fch_gelu, offset_fch_gelu,
-                            *fch, offset_fch,
+                            fch_gelu->getDeviceBuffer() + offset_fch_gelu,
+                            fch->getDeviceBuffer() + offset_fch,
                             B * T * 4 * C
                     );
                     kernel.Launch(q, 512);
@@ -850,10 +890,10 @@ namespace llmsycl::model {
                     */
 
                     kernels::MatmulBias kernel(
-                            *fcproj, offset_fcproj,
-                            *fch_gelu, offset_fch_gelu,
-                            *fcprojw, offset_fcprojw,
-                            *fcprojb, offset_fcprojb,
+                            fcproj->getDeviceBuffer() + offset_fcproj,
+                            fch_gelu->getDeviceBuffer() + offset_fch_gelu,
+                            fcprojw->getDeviceBuffer() + offset_fcprojw,
+                            fcprojb->getDeviceBuffer() + offset_fcprojb,
                             B, T, 4 * C, C
                     );
                     kernel.Launch(q, 512);
@@ -873,9 +913,9 @@ namespace llmsycl::model {
                             int N );
                      */
                     kernels::Residual kernel(
-                            *residual3, offset_residual3,
-                            *residual2, offset_residual2,
-                            *fcproj, offset_fcproj,
+                            residual3->getDeviceBuffer() + offset_residual3,
+                            residual2->getDeviceBuffer() + offset_residual2,
+                            fcproj->getDeviceBuffer() + offset_fcproj,
                             B * T * C);
                     kernel.Launch(q, 512);
                 }
@@ -883,7 +923,7 @@ namespace llmsycl::model {
 
             // last residual is in residual3
             residual = residual3.get();
-            residual_offset = (L-1) * B * T * C;
+            residual_offset = (L - 1) * B * T * C;
 
             {
                 /*
@@ -914,12 +954,12 @@ namespace llmsycl::model {
                 )
                 */
                 kernels::LayerNorm kernel(
-                        *lnf, 0,
-                        *lnf_mean, 0,
-                        *lnf_rstd, 0,
-                        *residual, residual_offset,
-                        *lnfw, 0,
-                        *lnfb, 0,
+                        lnf->getDeviceBuffer() + 0,
+                        lnf_mean->getDeviceBuffer() + 0,
+                        lnf_rstd->getDeviceBuffer() + 0,
+                        residual->getDeviceBuffer() + residual_offset,
+                        lnfw->getDeviceBuffer() + 0,
+                        lnfb->getDeviceBuffer() + 0,
                         B, T, C
                 );
                 kernel.Launch(q, 512);
@@ -949,10 +989,10 @@ namespace llmsycl::model {
                 */
 
                 kernels::MatmulBias kernel(
-                        *output, 0,
-                        *lnf, 0,
-                        *wte, 0,
-                        *wte /* dummy, hasBias is set to false*/, 0,
+                        output->getDeviceBuffer() +  0,
+                        lnf->getDeviceBuffer() +  0,
+                        wte->getDeviceBuffer() +  0,
+                        wte->getDeviceBuffer() +  0, //dummy, `hasBias` is set to false
                         B, T, C, Vp,
                         false
                 );
@@ -1001,7 +1041,8 @@ namespace llmsycl::model {
                     }
                 }
             };
-            auto sycl_queue = sycl::queue(sycl::gpu_selector_v, asycExceptionHandler, sycl::property::queue::enable_profiling());
+            auto sycl_queue = sycl::queue(sycl::gpu_selector_v, asycExceptionHandler,
+                                          sycl::property::queue::enable_profiling());
             logger->info("SYCL queue initialized.");
             logger->info("Device Name: {}", sycl_queue.get_device().get_info<sycl::info::device::name>());
             logger->info("Global Memory: {}", sycl_queue.get_device().get_info<sycl::info::device::global_mem_size>());
@@ -1010,9 +1051,9 @@ namespace llmsycl::model {
 
 
             // read in the (optional) command line arguments
-            const char* train_data_pattern = "../data/dataset_prepared/tiny_shakespeare_train.bin";
-            const char* val_data_pattern = "../data/dataset_prepared/tiny_shakespeare_val.bin";
-            const char* output_log_file = NULL;
+            const char *train_data_pattern = "../data/dataset_prepared/tiny_shakespeare_train.bin";
+            const char *val_data_pattern = "../data/dataset_prepared/tiny_shakespeare_val.bin";
+            const char *output_log_file = NULL;
             int B = 1; // batch size
             int T = 1024; // sequence length max
             float learning_rate = 3e-4f;
@@ -1056,7 +1097,7 @@ namespace llmsycl::model {
 
             // build the GPT-2 model from a checkpoint
 
-            loadCheckpoint("../data/dataset_prepared/gpt2_124M.bin");
+            loadCheckpoint(sycl_queue, "../data/dataset_prepared/gpt2_124M.bin");
             logger->info("| max_sequence_length T | {} |\n", max_seq_len);
             logger->info("| vocab_size V          | {} |\n", vocab_size);
             logger->info("| padded_vocab_size Vp  | {} |\n", padded_vocab_size);
@@ -1088,11 +1129,11 @@ namespace llmsycl::model {
 
             // some memory for generating samples from the model
             unsigned long long rng_state = 1337;
-            int* gen_tokens = (int*)mallocCheck(B * T * sizeof(int));
-            float* cpu_logits = (float*)mallocCheck(vocab_size * sizeof(float));
+            int *gen_tokens = (int *) mallocCheck(B * T * sizeof(int));
+            float *cpu_logits = (float *) mallocCheck(vocab_size * sizeof(float));
 
             // fill up gen_tokens with the GPT2_EOT, which kicks off the generation
-            for(int i = 0; i < B * T; ++i) {
+            for (int i = 0; i < B * T; ++i) {
                 gen_tokens[i] = GPT2_EOT;
             }
 
@@ -1115,11 +1156,11 @@ namespace llmsycl::model {
 
                 sycl_queue.wait_and_throw();
                 // move probs back to CPU and sample (note we only move the first vocab_size logits, ignoring the padding)
-                auto accHostLogits = output->getAccessorHostReadWrite((t - 1) * padded_vocab_size); // We have to read only `vocab_size` words
 
+                output->syncBlockingD2H();
 
-
-
+                // We have to read only `vocab_size` words
+                auto accHostLogits = output->getHostBuffer() + (t - 1) * padded_vocab_size;
 
                 float coin = (random_u32(&rng_state) >> 8) / 16777216.0f;
                 int next_token;
@@ -1135,7 +1176,7 @@ namespace llmsycl::model {
                     // instead of dividing all exp(logits), we can just multiply coin.
                     coin *= norm;
                     float cdf = 0.0f;
-                    next_token = vocab_size-1; // in case of rounding errors
+                    next_token = vocab_size - 1; // in case of rounding errors
                     for (int i = 0; i < vocab_size; i++) {
                         cdf += std::exp(accHostLogits[i]);
                         if (coin < cdf) {
@@ -1147,12 +1188,12 @@ namespace llmsycl::model {
                 gen_tokens[t] = next_token;
 
                 printf("\n");
-                for (int ii=0; ii<t+2; ii++) { printf("%d ", gen_tokens[ii]); }
+                for (int ii = 0; ii < t + 2; ii++) { printf("%d ", gen_tokens[ii]); }
                 printf("\n");
 
                 // print the generated token, either using the Tokenizer or a fallback
                 if (tokenizer.init_ok) {
-                    const char* token_str = tokenizer_decode(&tokenizer, next_token);
+                    const char *token_str = tokenizer_decode(&tokenizer, next_token);
                     safe_printf(token_str);
                 } else {
                     // fall back to printing the token id
