@@ -181,8 +181,7 @@ namespace llmsycl::kernels {
                 Unpermute unpermute_kernel(
                         dOut,
                         dInp,
-                        B, T, NH, HS,
-                        Helpers::CeilDiv(B * T * C, blockSize)
+                        B, T, NH, HS
                 );
                 auto e = unpermute_kernel.Launch(q, blockSize);
                 for (auto &event: e) {
