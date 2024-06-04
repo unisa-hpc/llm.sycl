@@ -1160,7 +1160,7 @@ namespace llmsycl::model {
                 }
                 fflush(stdout);
 
-                std::exit(44);
+                //std::exit(44);
             }
         }
 

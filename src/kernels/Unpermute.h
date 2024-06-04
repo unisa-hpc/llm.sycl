@@ -18,13 +18,12 @@ namespace llmsycl::kernels {
         Unpermute(
                 float *dOut,
                 const float *dInp,
-                int B, int N, int NH, int d,
-                int gridSize
+                int B, int N, int NH, int d
         ) :
                 BaseKernel("Unpermute"),
                 dOut(dOut),
                 dInp(dInp),
-                B(B), N(N), NH(NH), d(d), gridSize(gridSize) {
+                B(B), N(N), NH(NH), d(d) {
 
             addScalarParamToReport("B", B);
             addScalarParamToReport("N", N);
@@ -41,12 +40,11 @@ namespace llmsycl::kernels {
                 const int capturedN = this->N;
                 const int capturedNH = this->NH;
                 const int capturedD = this->d;
-
-                const int workSize = gridSize * blockSize;
+                const int workSize = capturedB * capturedNH * capturedN * capturedD;
 
                 h.parallel_for(
                         sycl::nd_range<1>(
-                                sycl::range<1>(workSize),
+                                sycl::range<1>(Helpers::MakeDivisible(workSize, blockSize)),
                                 sycl::range<1>(blockSize)
                         ),
                         [=](sycl::nd_item<1> item) {
@@ -72,7 +70,7 @@ namespace llmsycl::kernels {
     private:
         float *dOut;
         const float *dInp;
-        const int B, N, NH, d, gridSize;
+        const int B, N, NH, d;
     };
 
 

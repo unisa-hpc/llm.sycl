@@ -796,6 +796,11 @@ void attention_forward(float* out, float* qkvr, float* att,
     writeDeviceBufToNpy(k, B * T * C, "/tmp/xk_gold.npy");
     writeDeviceBufToNpy(v, B * T * C, "/tmp/xv_gold.npy");
 
+    //BTC: 786432
+    //B * NH * T * T: 12582912
+    std::printf("BTC: %d\n", B * T * C);
+    std::printf("B * NH * T * T: %d\n", B * NH * T * T);
+
     // batched matrix multiply with cuBLAS
     const float alpha = 1.0f;
     const float beta = 0.0f;
