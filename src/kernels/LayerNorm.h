@@ -73,7 +73,7 @@ namespace llmsycl::kernels {
                                 }
                                 v = v / (float)capturedC;
                                 // calculate the rstd
-                                float s = 1.0f / sqrtf(v + eps);
+                                float s = 1.0f / sycl::sqrt(v + eps);
 
 
                                 for (int i = 0; i < capturedC; i++) {

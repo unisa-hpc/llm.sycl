@@ -62,19 +62,15 @@ namespace llmsycl::kernels {
                             int warp_id = item.get_local_id() / WARP_SIZE;
                             int num_warps = blockSize / WARP_SIZE;
 
-
-
                             // micro-optimization: we iterate backwards so that
                             // after the softmax backward operation completes, the cache retains the
                             // part of the matrix close to the upper left corner, which benefits the
                             // matmul operation that immediately follows.
-
-
                             //int idx = 	item.get_group(0) * num_warps + warp_id; // forward order
 
                             int idx = (item.get_group_range(0) - item.get_group(0) - 1) * num_warps + warp_id; // backward order
 
-                            if (idx == 0) os << "idx=" << idx << " lane_id=" << lane_id << " warp_id=" << warp_id << " num_warps=" << num_warps << sycl::endl;
+                            //if (idx == 0) os << "idx=" << idx << " lane_id=" << lane_id << " warp_id=" << warp_id << " num_warps=" << num_warps << sycl::endl;
 
                             if(idx >= capturedN * capturedC) {
                                 return;
@@ -117,7 +113,7 @@ namespace llmsycl::kernels {
                             sumval *= sycl::exp(capturedInvTemp * (maxval - global_maxval));
 
                             float sum = sycl::reduce_over_group(item.get_sub_group(), sumval, sycl::plus<>());
-                            if (idx == 0) os << "sum[" << idx << "]=" << sum << sycl::endl;
+                            //if (idx == 0) os << "sum[" << idx << "]=" << sum << sycl::endl;
 
                             float norm = 1.f / sum;
 
@@ -125,7 +121,8 @@ namespace llmsycl::kernels {
                             for (int i = lane_id; i <= own_pos; i += WARP_SIZE) {
                                 // recalculation is faster than doing the round-trip through memory.
                                 float ev = expf(capturedInvTemp * (x[i] - global_maxval));
-                                {
+                                /*{
+                                    // DEBUG
                                     auto iidx0 = idx * capturedC + i;
                                     if (idx==0)
                                         os << "idx=" << idx << " i=" << i << " own_pos=" << own_pos << " pos_by_4=" << pos_by_4 << " lane_id=" << lane_id << " warp_id=" << warp_id << " num_warps=" << num_warps << " maxval=" << maxval << " sumval=" << sumval << " global_maxval=" << global_maxval << " sum=" << sum << " norm=" << norm << sycl::endl;
@@ -133,14 +130,13 @@ namespace llmsycl::kernels {
                                     {
                                         os << "capturedOut @ " << iidx0 << ": " << "ev=" <<ev << " norm=" << norm << "ev*norm=" << ev*norm << sycl::endl;
                                     }
-                                }
+                                }*/
 
                                 capturedOut[idx * capturedC + i] = ev * norm;
                             }
 
                         });
             });
-            q.wait_and_throw();
 
             report();
             return {event};
