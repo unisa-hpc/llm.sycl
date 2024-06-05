@@ -94,6 +94,7 @@ namespace llmsycl::kernels {
                     int grid_size = ceil_div(OC * B * T, block_size);
                     add_bias<<<grid_size, block_size>>>(out, bias, B, T, OC);
                     */
+                    h.depends_on(events);
                     h.parallel_for(
                             sycl::nd_range<1>(
                                     sycl::range<1>(Helpers::MakeDivisible(OC * B * T, blockSize)),

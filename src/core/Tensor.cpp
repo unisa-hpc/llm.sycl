@@ -199,3 +199,16 @@ void llmsycl::core::fillTensorWithRandomData(Tensor<int> &t, int valUpperLimit) 
     }
     t.syncBlockingH2D();
 }
+
+void llmsycl::core::saveFromDeviceToNpy(sycl::queue &q, const float *dBuf, size_t lenWords, const std::string &filename) {
+    q.wait_and_throw();
+    auto *hBuf = new float[lenWords];
+    q.memcpy(hBuf, dBuf, lenWords * sizeof(float)).wait();
+
+    npy::npy_data_ptr<float> d;
+    d.data_ptr = hBuf;
+    d.shape = {lenWords};
+    d.fortran_order = false;
+    npy::write_npy(filename, d);
+    delete[] hBuf;
+}

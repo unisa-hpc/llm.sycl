@@ -55,7 +55,7 @@ static void goldCpu(
             }
             v = v / C;
             // calculate the rstd
-            float s = 1.0f / sqrtf(v + eps);
+            float s = 1.0f / std::sqrt(v + eps);
             // seek to the output position in out[b,t,:]
 
             for (int i = 0; i < C; i++) {

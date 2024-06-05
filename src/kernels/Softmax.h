@@ -38,16 +38,13 @@ namespace llmsycl::kernels {
 
         std::vector<sycl::event> Launch(sycl::queue &q, int blockSize) override {
             auto event = q.submit([&](sycl::handler &h) {
-
                 auto capturedOut = dOut;
                 auto capturedInp = dInp;
-
                 const int capturedN = this->N;
                 const int capturedC = this->C;
                 const float capturedInvTemp = this->invTemperature;
-                constexpr int WARP_SIZE = 32;
-                assert(capturedC % 4  == 0);
 
+                assert(capturedC % 4  == 0);
                 sycl::stream os(10240, 1280, h);
 
                 h.parallel_for(
@@ -58,6 +55,7 @@ namespace llmsycl::kernels {
                         ),
                         [=](sycl::nd_item<1> item) {
 
+                            const int WARP_SIZE = item.get_sub_group().get_local_range()[0];
                             int lane_id = item.get_local_id() % WARP_SIZE;
                             int warp_id = item.get_local_id() / WARP_SIZE;
                             int num_warps = blockSize / WARP_SIZE;
@@ -82,7 +80,7 @@ namespace llmsycl::kernels {
                             auto x = capturedInp + idx * capturedC;
 
                             // not INF, so we don't get NaNs accidentally when subtracting two values.
-                            const float flt_max = 340282346638528859811704183484516925440.0f; // to avoid including float.h
+                            const float flt_max = FLT_MAX; // to avoid including float.h
                             float maxval = -flt_max;
                             float sumval = 0.0f;
 
@@ -120,7 +118,7 @@ namespace llmsycl::kernels {
                             // divide the whole row by the sum
                             for (int i = lane_id; i <= own_pos; i += WARP_SIZE) {
                                 // recalculation is faster than doing the round-trip through memory.
-                                float ev = expf(capturedInvTemp * (x[i] - global_maxval));
+                                float ev = sycl::exp(capturedInvTemp * (x[i] - global_maxval));
                                 /*{
                                     // DEBUG
                                     auto iidx0 = idx * capturedC + i;

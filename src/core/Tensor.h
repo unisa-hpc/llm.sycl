@@ -226,4 +226,6 @@ namespace llmsycl::core {
      */
     void fillTensorWithRandomData(Tensor<int> &t, int valUpperLimit);
 
+    void saveFromDeviceToNpy(sycl::queue &q, const float *dBuf, size_t lenWords, const std::string &filename);
+
 }

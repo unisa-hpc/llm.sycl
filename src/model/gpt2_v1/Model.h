@@ -320,7 +320,7 @@ namespace llmsycl::model {
 
         }
 
-        void feedforward(sycl::queue &q, int *inputs, int *targets, int B, int T) {
+        void feedforward(sycl::queue &q, int *inputs, int *targets, int B, int T, int genIndex) {
 
             // convenience parameters
             int V = vocab_size;
@@ -449,7 +449,7 @@ namespace llmsycl::model {
                     // 20
                     output = std::make_unique<core::Tensor<float>>(q, std::vector({act_sizes[20]}));
                 }
-                logger->info("allocated {} MiB for activations", (num_activations * sizeof(float)) >> 20);
+                logger->debug("allocated {} MiB for activations", (num_activations * sizeof(float)) >> 20);
 
             } else {
                 // validate B,T is consistent with how we've allocated the memory before
@@ -472,13 +472,13 @@ namespace llmsycl::model {
 
 
             wte->syncBlockingD2H();
-            wte->saveHostToNpy(0, V * C, "/tmp/c00.wte_uut.npy");
+            wte->saveHostToNpy(0, V * C, "/tmp/c00.wte.gen"+std::to_string(genIndex)+"_uut.npy");
 
             wpe->syncBlockingD2H();
-            wpe->saveHostToNpy(0, max_seq_len * C, "/tmp/c00.wpe_uut.npy");
+            wpe->saveHostToNpy(0, max_seq_len * C, "/tmp/c00.wpe.gen"+std::to_string(genIndex)+"_uut.npy");
 
             this->inputs->syncBlockingD2H();
-            this->inputs->saveHostToNpy(0, B * T, "/tmp/c00.inp_uut.npy");
+            this->inputs->saveHostToNpy(0, B * T, "/tmp/c00.inp.gen"+std::to_string(genIndex)+"_uut.npy");
 
             // encoding goes into residual[0]
             kernels::EncoderKernel encoderKernel(
@@ -491,7 +491,7 @@ namespace llmsycl::model {
             encoderKernel.Launch(q, 512);
 
             encoded->syncBlockingD2H();
-            encoded->saveHostToNpy(0, B * T * C, "/tmp/c01_uut.npy");
+            encoded->saveHostToNpy(0, B * T * C, "/tmp/c01.gen"+std::to_string(genIndex)+"_uut.npy");
 
             size_t
                     offset_ln1w = 0,
@@ -538,7 +538,7 @@ namespace llmsycl::model {
                     residual_offset += B * T * C;
                 }
                 residual->syncBlockingD2H();
-                residual->saveHostToNpy(residual_offset, B * T * C, "/tmp/c02.l" + std::to_string(l) + "_uut.npy");
+                residual->saveHostToNpy(residual_offset, B * T * C, "/tmp/c02.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
                 /// ------------------------------
 
                 // get the pointers of the weights for this layer
@@ -626,13 +626,13 @@ namespace llmsycl::model {
                     kernel.Launch(q, 512);
 
                     ln1->syncBlockingD2H();
-                    ln1->saveHostToNpy(offset_ln1, B * T * C, "/tmp/c03.l" + std::to_string(l) + "_uut.npy");
+                    ln1->saveHostToNpy(offset_ln1, B * T * C, "/tmp/c03.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
 
                     ln1_mean->syncBlockingD2H();
-                    ln1_mean->saveHostToNpy(offset_ln1_mean, B * T, "/tmp/c04.l" + std::to_string(l) + "_uut.npy");
+                    ln1_mean->saveHostToNpy(offset_ln1_mean, B * T, "/tmp/c04.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
 
                     ln1_rstd->syncBlockingD2H();
-                    ln1_rstd->saveHostToNpy(offset_ln1_rstd, B * T, "/tmp/c05.l" + std::to_string(l) + "_uut.npy");
+                    ln1_rstd->saveHostToNpy(offset_ln1_rstd, B * T, "/tmp/c05.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
                 }
 
                 {
@@ -667,12 +667,12 @@ namespace llmsycl::model {
                             ln1->getDeviceBuffer() + offset_ln1,
                             qkvw->getDeviceBuffer() + offset_qkvw,
                             qkvb->getDeviceBuffer() + offset_qkvb,
-                            B, T, C, 3 * C
+                            B, T, C, 3 * C,
+                            true
                     );
                     kernel.Launch(q, 512);
-
                     scratch->syncBlockingD2H();
-                    scratch->saveHostToNpy(0, B * T * (3 * C), "/tmp/c06.l" + std::to_string(l) + "_uut.npy");
+                    scratch->saveHostToNpy(0, B * T * (3 * C), "/tmp/c06.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
                 }
 
                 {
@@ -712,13 +712,13 @@ namespace llmsycl::model {
                     kernel.Launch(q, 512);
 
                     atty->syncBlockingD2H();
-                    atty->saveHostToNpy(offset_atty, B * T * C, "/tmp/c07.l" + std::to_string(l) + "_uut.npy");
+                    atty->saveHostToNpy(offset_atty, B * T * C, "/tmp/c07.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
 
                     qkvr->syncBlockingD2H();
-                    qkvr->saveHostToNpy(offset_qkvr, B * T * (3 * C), "/tmp/c08.l" + std::to_string(l) + "_uut.npy");
+                    qkvr->saveHostToNpy(offset_qkvr, B * T * (3 * C), "/tmp/c08.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
 
                     att->syncBlockingD2H();
-                    att->saveHostToNpy(offset_att, B * NH * T * T, "/tmp/c09.l" + std::to_string(l) + "_uut.npy");
+                    att->saveHostToNpy(offset_att, B * NH * T * T, "/tmp/c09.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
                 }
 
                 {
@@ -751,6 +751,8 @@ namespace llmsycl::model {
                             B, T, C, C
                     );
                     kernel.Launch(q, 512);
+                    attproj->syncBlockingD2H();
+                    attproj->saveHostToNpy(offset_attproj, B * T * C, "/tmp/c10.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
                 }
 
                 {
@@ -772,6 +774,9 @@ namespace llmsycl::model {
                             attproj->getDeviceBuffer() + offset_attproj,
                             B * T * C);
                     kernel.Launch(q, 512);
+                    residual2->syncBlockingD2H();
+                    residual2->saveHostToNpy(offset_residual2, B * T * C,
+                                             "/tmp/c11.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
                 }
 
                 {
@@ -812,6 +817,12 @@ namespace llmsycl::model {
                             B, T, C
                     );
                     kernel.Launch(q, 512);
+                    ln2->syncBlockingD2H();
+                    ln2_mean->syncBlockingD2H();
+                    ln2_rstd->syncBlockingD2H();
+                    ln2->saveHostToNpy(offset_ln2, B * T * C, "/tmp/c12.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
+                    ln2_mean->saveHostToNpy(offset_ln2_mean, B * T, "/tmp/c13.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
+                    ln2_rstd->saveHostToNpy(offset_ln2_rstd, B * T, "/tmp/c14.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
                 }
 
                 {
@@ -845,6 +856,8 @@ namespace llmsycl::model {
                             B, T, C, 4 * C
                     );
                     kernel.Launch(q, 512);
+                    fch->syncBlockingD2H();
+                    fch->saveHostToNpy(offset_fch, B * T * 4 * C, "/tmp/c15.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
                 }
 
                 {
@@ -864,6 +877,9 @@ namespace llmsycl::model {
                             B * T * 4 * C
                     );
                     kernel.Launch(q, 512);
+                    fch_gelu->syncBlockingD2H();
+                    fch_gelu->saveHostToNpy(offset_fch_gelu, B * T * 4 * C,
+                                            "/tmp/c16.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
                 }
 
                 {
@@ -897,6 +913,8 @@ namespace llmsycl::model {
                             B, T, 4 * C, C
                     );
                     kernel.Launch(q, 512);
+                    fcproj->syncBlockingD2H();
+                    fcproj->saveHostToNpy(offset_fcproj, B * T * C, "/tmp/c17.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
                 }
 
                 {
@@ -918,12 +936,17 @@ namespace llmsycl::model {
                             fcproj->getDeviceBuffer() + offset_fcproj,
                             B * T * C);
                     kernel.Launch(q, 512);
+                    residual3->syncBlockingD2H();
+                    residual3->saveHostToNpy(offset_residual3, B * T * C,
+                                             "/tmp/c18.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
                 }
             }
 
             // last residual is in residual3
             residual = residual3.get();
             residual_offset = (L - 1) * B * T * C;
+            residual->syncBlockingD2H();
+            residual->saveHostToNpy(residual_offset, B * T * C, "/tmp/c19.gen"+std::to_string(genIndex)+"_uut.npy");
 
             {
                 /*
@@ -963,6 +986,12 @@ namespace llmsycl::model {
                         B, T, C
                 );
                 kernel.Launch(q, 512);
+                lnf->syncBlockingD2H();
+                lnf->saveHostToNpy(0, B * T * C, "/tmp/c20.gen"+std::to_string(genIndex)+"_uut.npy");
+                lnf_mean->syncBlockingD2H();
+                lnf_mean->saveHostToNpy(0, B * T, "/tmp/c21.gen"+std::to_string(genIndex)+"_uut.npy");
+                lnf_rstd->syncBlockingD2H();
+                lnf_rstd->saveHostToNpy(0, B * T, "/tmp/c22.gen"+std::to_string(genIndex)+"_uut.npy");
             }
 
             {
@@ -989,14 +1018,16 @@ namespace llmsycl::model {
                 */
 
                 kernels::MatmulBias kernel(
-                        output->getDeviceBuffer() +  0,
-                        lnf->getDeviceBuffer() +  0,
-                        wte->getDeviceBuffer() +  0,
-                        wte->getDeviceBuffer() +  0, //dummy, `hasBias` is set to false
+                        output->getDeviceBuffer() + 0,
+                        lnf->getDeviceBuffer() + 0,
+                        wte->getDeviceBuffer() + 0,
+                        wte->getDeviceBuffer() + 0, //dummy, `hasBias` is set to false
                         B, T, C, Vp,
                         false
                 );
                 kernel.Launch(q, 512);
+                output->syncBlockingD2H();
+                output->saveHostToNpy(0, B * T * Vp, "/tmp/c23.gen"+std::to_string(genIndex)+"_uut.npy");
             }
 
             /*
@@ -1029,26 +1060,26 @@ namespace llmsycl::model {
             return (*state * 0x2545F4914F6CDD1Dull) >> 32;
         }
 
-        void inference() {
-            auto asycExceptionHandler = [](sycl::exception_list e_list) {
-                for (std::exception_ptr const &e: e_list) {
-                    try {
-                        std::rethrow_exception(e);
-                    }
-                    catch (std::exception const &e) {
-                        logger->error("Failure: {}", e.what());
-                        std::terminate();
-                    }
+        int sample_softmax(const float* logits, int n, float coin) {
+            // sample index from logits (converted to probabilities using softmax)
+            // coin is a random number in [0, 1), usually from random_f32()
+            double norm = 0;
+            for (int i = 0; i < n; i++) {
+                norm += std::exp(logits[i]);
+            }
+            // instead of dividing all exp(logits), we can just multiply coin.
+            coin *= norm;
+            float cdf = 0.0f;
+            for (int i = 0; i < n; i++) {
+                cdf += std::exp(logits[i]);
+                if (coin < cdf) {
+                    return i;
                 }
-            };
-            auto sycl_queue = sycl::queue(sycl::gpu_selector_v, asycExceptionHandler,
-                                          sycl::property::queue::enable_profiling());
-            logger->info("SYCL queue initialized.");
-            logger->info("Device Name: {}", sycl_queue.get_device().get_info<sycl::info::device::name>());
-            logger->info("Global Memory: {}", sycl_queue.get_device().get_info<sycl::info::device::global_mem_size>());
-            logger->info("Local Memory: {}", sycl_queue.get_device().get_info<sycl::info::device::local_mem_size>());
-            logger->info("CUs: {}", sycl_queue.get_device().get_info<sycl::info::device::max_compute_units>());
+            }
+            return n - 1; // in case of rounding errors
+        }
 
+        void inference(sycl::queue &sycl_queue) {
 
             // read in the (optional) command line arguments
             const char *train_data_pattern = "../data/dataset_prepared/tiny_shakespeare_train.bin";
@@ -1130,7 +1161,6 @@ namespace llmsycl::model {
             // some memory for generating samples from the model
             unsigned long long rng_state = 1337;
             int *gen_tokens = (int *) mallocCheck(B * T * sizeof(int));
-            float *cpu_logits = (float *) mallocCheck(vocab_size * sizeof(float));
 
             // fill up gen_tokens with the GPT2_EOT, which kicks off the generation
             for (int i = 0; i < B * T; ++i) {
@@ -1148,7 +1178,7 @@ namespace llmsycl::model {
                 // we re-calculate the forward pass for all of (B,T) positions from scratch
                 // but the inference here is just for sanity checking anyway
                 // and we can maybe optimize a bit more later, with careful tests
-                feedforward(sycl_queue, gen_tokens, NULL, B, T);
+                feedforward(sycl_queue, gen_tokens, NULL, B, T, t-1);
                 // furthermore, below we're only using b=0 (i.e. the first row) of all B rows
                 // we're in principle running B "inference streams" in parallel here
                 // only using position 0 because it's a bit faster (copy less probs from GPU -> CPU)
@@ -1163,33 +1193,13 @@ namespace llmsycl::model {
                 auto accHostLogits = output->getHostBuffer() + (t - 1) * padded_vocab_size;
 
                 float coin = (random_u32(&rng_state) >> 8) / 16777216.0f;
-                int next_token;
-                {
-                    ///TODO: int next_token = sample_softmax(cpu_logits, model.config.vocab_size, coin);
-
-                    // sample index from logits (converted to probabilities using softmax)
-                    // coin is a random number in [0, 1), usually from random_f32()
-                    double norm = 0;
-                    for (int i = 0; i < vocab_size; i++) {
-                        norm += std::exp(accHostLogits[i]);
-                    }
-                    // instead of dividing all exp(logits), we can just multiply coin.
-                    coin *= norm;
-                    float cdf = 0.0f;
-                    next_token = vocab_size - 1; // in case of rounding errors
-                    for (int i = 0; i < vocab_size; i++) {
-                        cdf += std::exp(accHostLogits[i]);
-                        if (coin < cdf) {
-                            next_token = i;
-                            break;
-                        }
-                    }
-                }
+                //printf("\nCoin: %f, done running feedforward for genIndex: %d\n", coin, t-1);
+                int next_token = sample_softmax(accHostLogits, vocab_size, coin);
                 gen_tokens[t] = next_token;
 
-                printf("\n");
-                for (int ii = 0; ii < t + 2; ii++) { printf("%d ", gen_tokens[ii]); }
-                printf("\n");
+                //printf("\n");
+                //for (int ii = 0; ii < t + 2; ii++) { printf("%d ", gen_tokens[ii]); }
+                //printf("\n");
 
                 // print the generated token, either using the Tokenizer or a fallback
                 if (tokenizer.init_ok) {

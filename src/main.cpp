@@ -32,9 +32,33 @@ int main(int argc, char *argv[]) {
     logger->debug("BatchSize: {}", globalBatchsize);
     logger->info("Sycl version of llm.c for HPC course 2024 (Prof. B. Cosenza).");
 
+
+    auto asycExceptionHandler = [](sycl::exception_list e_list) {
+        for (std::exception_ptr const &e: e_list) {
+            try {
+                std::rethrow_exception(e);
+            }
+            catch (std::exception const &e) {
+                logger->error("Failure: {}", e.what());
+                std::terminate();
+            }
+        }
+    };
+    auto sycl_queue = sycl::queue(sycl::gpu_selector_v, asycExceptionHandler,
+                                  {
+                                          sycl::property::queue::enable_profiling(),
+                                          //sycl::property::queue::in_order()
+                                  });
+    logger->info("SYCL queue initialized.");
+    logger->info("Device Name: {}", sycl_queue.get_device().get_info<sycl::info::device::name>());
+    logger->info("Global Memory: {}", sycl_queue.get_device().get_info<sycl::info::device::global_mem_size>());
+    logger->info("Local Memory: {}", sycl_queue.get_device().get_info<sycl::info::device::local_mem_size>());
+    logger->info("CUs: {}", sycl_queue.get_device().get_info<sycl::info::device::max_compute_units>());
+
+
     // Create a GPT2 model
     llmsycl::model::Model gpt2;
-    gpt2.inference();
+    gpt2.inference(sycl_queue);
 
-
+    logger->info("Finished inference.");
 }

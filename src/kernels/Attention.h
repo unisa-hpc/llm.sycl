@@ -83,6 +83,7 @@ namespace llmsycl::kernels {
             // permute and separate inp from (B, T, 3, NH, HS) to 3X (B, NH, T, HS)
             {
                 /// TODO: tnInp.save(inpOffset + 0, B * T * 3 * C, "/tmp/xInp_uut.npy");
+                //core::saveFromDeviceToNpy(q, dInp, B * T * 3 * C, "/tmp/xInp_uut.npy");
                 Permute permute_kernel(
                         dQkvr + 0 * B * T * C,
                         dQkvr + 1 * B * T * C,
@@ -102,16 +103,18 @@ namespace llmsycl::kernels {
             auto dQuery = dQkvr + 0 * B * T * C;
             auto dKey = dQkvr + 1 * B * T * C;
             auto dValue = dQkvr + 2 * B * T * C;
+            //core::saveFromDeviceToNpy(q, dQuery, B * T * C, "/tmp/xq_uut.npy");
+            //core::saveFromDeviceToNpy(q, dKey, B * T * C, "/tmp/xk_uut.npy");
+            //core::saveFromDeviceToNpy(q, dValue, B * T * C, "/tmp/xv_uut.npy");
+
             auto preAtt = dInp;
 
             // STEP 2 - Creating sub buffers needed for oneMKL.
             //core::Tensor<float> tnTmp({(size_t) B * NH * T * T});
             {
-                sycl::buffer<float, 1> dCopyK(sycl::range<1>(B * NH * T * HS));
-                sycl::buffer<float, 1> dCopyQ(sycl::range<1>(B * NH * T * HS));
                 const float alpha = 1.0f;
                 const float beta = 0.0f;
-
+                q.wait_and_throw();
                 auto e = oneapi::mkl::blas::column_major::gemm_batch(
                         q,
                         oneapi::mkl::transpose::trans,
@@ -128,6 +131,7 @@ namespace llmsycl::kernels {
                         B * NH
                 );
                 events.push_back(e);
+                q.wait_and_throw();
             }
 
 
@@ -135,24 +139,25 @@ namespace llmsycl::kernels {
             {
                 //tnTmp.save( "/tmp/xa_uut.npy"); // Almost ok
                 ///TODO: tnInp.save(0, B * NH * T * T, "/tmp/xa_uut.npy"); // WRONG
+                //core::saveFromDeviceToNpy(q, preAtt, B * NH * T * T, "/tmp/xa_uut.npy");
                 Softmax softmax_kernel(
                         dAtt,
                         preAtt,
                         1.0f / std::sqrt((float) HS),
-                        B * NH * T, T
+                        B * NH, T
                 );
                 auto e = softmax_kernel.Launch(q, blockSizeSoftMax);
                 for (auto &event: e) {
                     events.push_back(event);
                 }
                 ///TODO: tnAtt.save(attOffset + 0, B * NH * T * T, "/tmp/xb_uut.npy"); // WRONG
+                //core::saveFromDeviceToNpy(q, dAtt, B * NH * T * T, "/tmp/xb_uut.npy");
             }
 
+            q.wait_and_throw();
 
             // STEP 4 - gemm
             {
-                sycl::buffer<float, 1> dCopyV(sycl::range<1>(B * NH * T * HS));
-                sycl::buffer<float, 1> dCopyAtt(sycl::range<1>(B * NH * T * T));
 
                 const float alpha = 1.0f;
                 const float beta = 0.0f;
@@ -175,6 +180,7 @@ namespace llmsycl::kernels {
                 );
             }
 
+            q.wait_and_throw();
 
             // STEP 5 - Un-permute
             {
@@ -188,6 +194,10 @@ namespace llmsycl::kernels {
                     events.push_back(event);
                 }
             }
+
+            q.wait_and_throw();
+
+            //std::exit(111);
 
             report();
             return events;

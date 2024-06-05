@@ -9,6 +9,7 @@ def get_files_with_pattern(path, has_word):
 
 def find_diff(uut, gold, len):
     max_diff = len / 10000000.0 * 0.1
+    max_diff_cnt = 10
     if max_diff > 2:
         print("WARNING: Max diff is too large (>1).")
     assert uut.shape == gold.shape
@@ -23,8 +24,8 @@ def find_diff(uut, gold, len):
             print("\t\tuut: ", uut[i])
             print("\t\tgold: ", gold[i])
             cnt += 1
-            if cnt > 100:
-                print("Found more than 100 differences, stopping")
+            if cnt > max_diff_cnt:
+                print("Found more than ", max_diff_cnt, " differences, stopping")
                 return False
     if sum_diff < max_diff * 100:
         print("Sum of differences: ", sum_diff)
@@ -32,6 +33,7 @@ def find_diff(uut, gold, len):
     else:
         print("Sum of differences is too large: ", sum_diff)
         return False
+
 
 if __name__ == '__main__':
     path = '/tmp/'
@@ -46,12 +48,14 @@ if __name__ == '__main__':
             case_gold = gold.split('_')[0]
 
             if case_uut == case_gold:
+                #if case_uut.find(".gen9") == -1:
+                #    continue
                 print("Found a case: ", case_uut)
                 uut_data = np.load(path + uut)
                 gold_data = np.load(path + gold)
                 # print(uut_data)
                 # print(gold_data)
-                match = np.allclose(uut_data, gold_data, atol=1e-1)
+                match = np.allclose(uut_data, gold_data, atol=1e-4)
                 print("comparison against gold passes: ", match)
                 if not match:
                     find_diff(uut_data, gold_data, len=gold_data.size)
