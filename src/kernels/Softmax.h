@@ -45,46 +45,103 @@ namespace llmsycl::kernels {
                 const int capturedN = this->N;
                 const int capturedC = this->C;
                 const float capturedInvTemp = this->invTemperature;
+                constexpr int WARP_SIZE = 32;
+                assert(capturedC % 4  == 0);
+
+                sycl::stream os(10240, 1280, h);
 
                 h.parallel_for(
                         ///TODO: Check this coef 32 in the worksize. Is it correct?
                         sycl::nd_range<1>(
-                                sycl::range<1>(Helpers::MakeDivisible(N, blockSize)),
+                                sycl::range<1>(Helpers::MakeDivisible(N*C*32, blockSize)),
                                 sycl::range<1>(blockSize)
                         ),
                         [=](sycl::nd_item<1> item) {
 
-                            // const size_t subgroup_size = item.get_sub_group().get_local_range().get(0); // Get the size of the subgroup
-                            // const size_t num_sg_in_wg = item.get_local_range(0) / subgroup_size; // num warps in the workgroup
-                            // const size_t local_id = item.get_local_id(0); // Get the local ID of the work-item
-                            // const size_t subgroup_index = local_id / subgroup_size; // Calculate the index of the subgroup
-                            // const size_t idInSg = local_id % subgroup_size; // Calculate the index of the work-item within the subgroup
+                            int lane_id = item.get_local_id() % WARP_SIZE;
+                            int warp_id = item.get_local_id() / WARP_SIZE;
+                            int num_warps = blockSize / WARP_SIZE;
 
-                            // inp is (N, T)
-                            // out is (N, T), each row of inp will get softmaxed
-                            const auto i = item.get_global_id(0);
-                            if (i < capturedN) {
-                                float maxval = -INFINITY;
-                                double sum = 0.0;
-                                for (int j = 0; j < capturedC; j++) {
-                                    if (capturedInp[i*capturedC+j] > maxval) {
-                                        maxval = capturedInp[i*capturedC+j];
-                                    }
-                                }
-                                for (int j = 0; j < capturedC; j++) {
-                                    sum += sycl::exp((capturedInp[i*capturedC+j] - maxval) * capturedInvTemp);
-                                    capturedOut[i*capturedC+j] = (float) sum;
-                                }
-                                auto sumInverse = sum == 0.0 ?
-                                        0.0 :
-                                        1.0/sum;
 
-                                for (int j = 0; j < capturedC; j++) {
-                                    capturedOut[i*capturedC+j] *= (j > i/capturedC) ? 0 : capturedOut[i*capturedC+j] * (float)sumInverse;
+
+                            // micro-optimization: we iterate backwards so that
+                            // after the softmax backward operation completes, the cache retains the
+                            // part of the matrix close to the upper left corner, which benefits the
+                            // matmul operation that immediately follows.
+
+
+                            //int idx = 	item.get_group(0) * num_warps + warp_id; // forward order
+
+                            int idx = (item.get_group_range(0) - item.get_group(0) - 1) * num_warps + warp_id; // backward order
+
+                            if (idx == 0) os << "idx=" << idx << " lane_id=" << lane_id << " warp_id=" << warp_id << " num_warps=" << num_warps << sycl::endl;
+
+                            if(idx >= capturedN * capturedC) {
+                                return;
+                            }
+                            int own_pos = idx % capturedC;
+                            int pos_by_4 = own_pos / 4;
+
+                            // one row of inp, i.e. inp[idx, :] of shape (capturedC,)
+                            auto x = capturedInp + idx * capturedC;
+
+                            // not INF, so we don't get NaNs accidentally when subtracting two values.
+                            const float flt_max = 340282346638528859811704183484516925440.0f; // to avoid including float.h
+                            float maxval = -flt_max;
+                            float sumval = 0.0f;
+
+                            //const float* x_aligned = reinterpret_cast<const float*>(__builtin_assume_aligned(x, 16));
+                            for (int i = lane_id; i < pos_by_4; i += WARP_SIZE) {
+                                float regarray[4];
+                                for (int k = 0; k < 4; ++k) {
+                                    regarray[k] = (float)x[4*i + k];
+                                }
+                                float old_maxval = maxval;
+                                for(int k = 0; k < 4; ++k) {
+                                    maxval = sycl::fmax(maxval, regarray[k]);
+                                }
+                                sumval *= sycl::exp(capturedInvTemp * (old_maxval - maxval));
+                                for(int k = 0; k < 4; ++k) {
+                                    sumval += sycl::exp(capturedInvTemp * (regarray[k] - maxval));
                                 }
                             }
+
+                            if(4*pos_by_4 + lane_id <= own_pos) {
+                                float old_maxval = maxval;
+                                maxval = sycl::fmax(maxval, (float)x[4*pos_by_4 + lane_id]);
+                                sumval *= sycl::exp(capturedInvTemp * (old_maxval - maxval));
+                                sumval += sycl::exp(capturedInvTemp * ((float)x[4*pos_by_4 + lane_id] - maxval));
+                            }
+
+                            float global_maxval = sycl::reduce_over_group(item.get_sub_group(), maxval, sycl::maximum<>());
+                            sumval *= sycl::exp(capturedInvTemp * (maxval - global_maxval));
+
+                            float sum = sycl::reduce_over_group(item.get_sub_group(), sumval, sycl::plus<>());
+                            if (idx == 0) os << "sum[" << idx << "]=" << sum << sycl::endl;
+
+                            float norm = 1.f / sum;
+
+                            // divide the whole row by the sum
+                            for (int i = lane_id; i <= own_pos; i += WARP_SIZE) {
+                                // recalculation is faster than doing the round-trip through memory.
+                                float ev = expf(capturedInvTemp * (x[i] - global_maxval));
+                                {
+                                    auto iidx0 = idx * capturedC + i;
+                                    if (idx==0)
+                                        os << "idx=" << idx << " i=" << i << " own_pos=" << own_pos << " pos_by_4=" << pos_by_4 << " lane_id=" << lane_id << " warp_id=" << warp_id << " num_warps=" << num_warps << " maxval=" << maxval << " sumval=" << sumval << " global_maxval=" << global_maxval << " sum=" << sum << " norm=" << norm << sycl::endl;
+                                    if (iidx0 == 0)
+                                    {
+                                        os << "capturedOut @ " << iidx0 << ": " << "ev=" <<ev << " norm=" << norm << "ev*norm=" << ev*norm << sycl::endl;
+                                    }
+                                }
+
+                                capturedOut[idx * capturedC + i] = ev * norm;
+                            }
+
                         });
             });
+            q.wait_and_throw();
+
             report();
             return {event};
         }
