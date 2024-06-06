@@ -27,6 +27,8 @@
 namespace llmsycl::model {
     class Model {
     private:
+        bool disableTensorDumping = false;
+        int generationBound = 0;
         /*************************************************************************************
          * Parameters:
          ***********************/
@@ -95,6 +97,11 @@ namespace llmsycl::model {
         bool isAllocated = false;
         constexpr static int GPT2_EOT = 50256;
     public:
+        Model(int batch_size, int generationBound, bool disableTensorDumping) {
+            this->batch_size = batch_size;
+            this->generationBound = generationBound;
+            this->disableTensorDumping = disableTensorDumping;
+        }
 
         void loadCheckpoint(sycl::queue &queue, const std::string &checkpointPath) {
             // read in model from a checkpoint file
@@ -442,15 +449,19 @@ namespace llmsycl::model {
             ///             ActivationTensors acts = model->acts;
 
 
+            if (!disableTensorDumping) {
+                wte->syncBlockingD2H();
+                wte->saveHostToNpy(0, V * C, "/tmp/c00.wte.gen" + std::to_string(genIndex) + "_uut.npy");
 
-            wte->syncBlockingD2H();
-            wte->saveHostToNpy(0, V * C, "/tmp/c00.wte.gen"+std::to_string(genIndex)+"_uut.npy");
+                wpe->syncBlockingD2H();
+                wpe->saveHostToNpy(0, max_seq_len * C, "/tmp/c00.wpe.gen" + std::to_string(genIndex) + "_uut.npy");
 
-            wpe->syncBlockingD2H();
-            wpe->saveHostToNpy(0, max_seq_len * C, "/tmp/c00.wpe.gen"+std::to_string(genIndex)+"_uut.npy");
+                this->inputs->syncBlockingD2H();
+                this->inputs->saveHostToNpy(0, B * T, "/tmp/c00.inp.gen" + std::to_string(genIndex) + "_uut.npy");
+            }
 
-            this->inputs->syncBlockingD2H();
-            this->inputs->saveHostToNpy(0, B * T, "/tmp/c00.inp.gen"+std::to_string(genIndex)+"_uut.npy");
+            std::vector<std::vector<sycl::event>> vec_events;
+            vec_events.push_back({});
 
             // encoding goes into residual[0]
             kernels::EncoderKernel encoderKernel(
@@ -460,10 +471,15 @@ namespace llmsycl::model {
                     wpe->getDeviceBuffer(),
                     B, T, C
             );
-            encoderKernel.Launch(q, 512);
 
-            encoded->syncBlockingD2H();
-            encoded->saveHostToNpy(0, B * T * C, "/tmp/c01.gen"+std::to_string(genIndex)+"_uut.npy");
+            vec_events.push_back(
+                    encoderKernel.Launch(q, 512, vec_events.back())
+            );
+
+            if (!disableTensorDumping) {
+                encoded->syncBlockingD2H();
+                encoded->saveHostToNpy(0, B * T * C, "/tmp/c01.gen" + std::to_string(genIndex) + "_uut.npy");
+            }
 
             size_t
                     offset_ln1w = 0,
@@ -510,7 +526,9 @@ namespace llmsycl::model {
                     residual_offset += B * T * C;
                 }
                 residual->syncBlockingD2H();
-                residual->saveHostToNpy(residual_offset, B * T * C, "/tmp/c02.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
+                residual->saveHostToNpy(residual_offset, B * T * C,
+                                        "/tmp/c02.l" + std::to_string(l) + ".gen" + std::to_string(genIndex) +
+                                        "_uut.npy");
                 /// ------------------------------
 
                 // get the pointers of the weights for this layer
@@ -561,16 +579,23 @@ namespace llmsycl::model {
                             ln1b->getDeviceBuffer() + offset_ln1b,
                             B, T, C
                     );
-                    kernel.Launch(q, 512);
+                    vec_events.push_back(kernel.Launch(q, 512, vec_events.back()));
+                    if (!disableTensorDumping) {
+                        ln1->syncBlockingD2H();
+                        ln1->saveHostToNpy(offset_ln1, B * T * C,
+                                           "/tmp/c03.l" + std::to_string(l) + ".gen" + std::to_string(genIndex) +
+                                           "_uut.npy");
 
-                    ln1->syncBlockingD2H();
-                    ln1->saveHostToNpy(offset_ln1, B * T * C, "/tmp/c03.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
+                        ln1_mean->syncBlockingD2H();
+                        ln1_mean->saveHostToNpy(offset_ln1_mean, B * T,
+                                                "/tmp/c04.l" + std::to_string(l) + ".gen" + std::to_string(genIndex) +
+                                                "_uut.npy");
 
-                    ln1_mean->syncBlockingD2H();
-                    ln1_mean->saveHostToNpy(offset_ln1_mean, B * T, "/tmp/c04.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
-
-                    ln1_rstd->syncBlockingD2H();
-                    ln1_rstd->saveHostToNpy(offset_ln1_rstd, B * T, "/tmp/c05.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
+                        ln1_rstd->syncBlockingD2H();
+                        ln1_rstd->saveHostToNpy(offset_ln1_rstd, B * T,
+                                                "/tmp/c05.l" + std::to_string(l) + ".gen" + std::to_string(genIndex) +
+                                                "_uut.npy");
+                    }
                 }
 
                 {
@@ -582,9 +607,13 @@ namespace llmsycl::model {
                             B, T, C, 3 * C,
                             true
                     );
-                    kernel.Launch(q, 512);
-                    scratch->syncBlockingD2H();
-                    scratch->saveHostToNpy(0, B * T * (3 * C), "/tmp/c06.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
+                    vec_events.push_back(kernel.Launch(q, 512, vec_events.back()));
+                    if (!disableTensorDumping) {
+                        scratch->syncBlockingD2H();
+                        scratch->saveHostToNpy(0, B * T * (3 * C),
+                                               "/tmp/c06.l" + std::to_string(l) + ".gen" + std::to_string(genIndex) +
+                                               "_uut.npy");
+                    }
                 }
 
                 {
@@ -597,16 +626,24 @@ namespace llmsycl::model {
                             att->getDeviceBuffer() + offset_att,
                             scratch->getDeviceBuffer() + 0,
                             B, T, C, NH, 256);
-                    kernel.Launch(q, 512);
+                    vec_events.push_back(kernel.Launch(q, 512, vec_events.back()));
 
-                    atty->syncBlockingD2H();
-                    atty->saveHostToNpy(offset_atty, B * T * C, "/tmp/c07.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
+                    if (!disableTensorDumping) {
+                        atty->syncBlockingD2H();
+                        atty->saveHostToNpy(offset_atty, B * T * C,
+                                            "/tmp/c07.l" + std::to_string(l) + ".gen" + std::to_string(genIndex) +
+                                            "_uut.npy");
 
-                    qkvr->syncBlockingD2H();
-                    qkvr->saveHostToNpy(offset_qkvr, B * T * (3 * C), "/tmp/c08.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
+                        qkvr->syncBlockingD2H();
+                        qkvr->saveHostToNpy(offset_qkvr, B * T * (3 * C),
+                                            "/tmp/c08.l" + std::to_string(l) + ".gen" + std::to_string(genIndex) +
+                                            "_uut.npy");
 
-                    att->syncBlockingD2H();
-                    att->saveHostToNpy(offset_att, B * NH * T * T, "/tmp/c09.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
+                        att->syncBlockingD2H();
+                        att->saveHostToNpy(offset_att, B * NH * T * T,
+                                           "/tmp/c09.l" + std::to_string(l) + ".gen" + std::to_string(genIndex) +
+                                           "_uut.npy");
+                    }
                 }
 
                 {
@@ -617,9 +654,13 @@ namespace llmsycl::model {
                             attprojb->getDeviceBuffer() + offset_attprojb,
                             B, T, C, C
                     );
-                    kernel.Launch(q, 512);
-                    attproj->syncBlockingD2H();
-                    attproj->saveHostToNpy(offset_attproj, B * T * C, "/tmp/c10.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
+                    vec_events.push_back(kernel.Launch(q, 512, vec_events.back()));
+                    if (!disableTensorDumping) {
+                        attproj->syncBlockingD2H();
+                        attproj->saveHostToNpy(offset_attproj, B * T * C,
+                                               "/tmp/c10.l" + std::to_string(l) + ".gen" + std::to_string(genIndex) +
+                                               "_uut.npy");
+                    }
                 }
 
                 {
@@ -628,10 +669,15 @@ namespace llmsycl::model {
                             residual->getDeviceBuffer() + residual_offset,
                             attproj->getDeviceBuffer() + offset_attproj,
                             B * T * C);
-                    kernel.Launch(q, 512);
-                    residual2->syncBlockingD2H();
-                    residual2->saveHostToNpy(offset_residual2, B * T * C,
-                                             "/tmp/c11.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
+                    vec_events.push_back(
+                            kernel.Launch(q, 512, vec_events.back())
+                    );
+                    if (!disableTensorDumping) {
+                        residual2->syncBlockingD2H();
+                        residual2->saveHostToNpy(offset_residual2, B * T * C,
+                                                 "/tmp/c11.l" + std::to_string(l) + ".gen" + std::to_string(genIndex) +
+                                                 "_uut.npy");
+                    }
                 }
 
                 {
@@ -644,13 +690,23 @@ namespace llmsycl::model {
                             ln2b->getDeviceBuffer() + offset_ln2b,
                             B, T, C
                     );
-                    kernel.Launch(q, 512);
-                    ln2->syncBlockingD2H();
-                    ln2_mean->syncBlockingD2H();
-                    ln2_rstd->syncBlockingD2H();
-                    ln2->saveHostToNpy(offset_ln2, B * T * C, "/tmp/c12.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
-                    ln2_mean->saveHostToNpy(offset_ln2_mean, B * T, "/tmp/c13.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
-                    ln2_rstd->saveHostToNpy(offset_ln2_rstd, B * T, "/tmp/c14.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
+                    vec_events.push_back(
+                            kernel.Launch(q, 512, vec_events.back())
+                    );
+                    if (!disableTensorDumping) {
+                        ln2->syncBlockingD2H();
+                        ln2_mean->syncBlockingD2H();
+                        ln2_rstd->syncBlockingD2H();
+                        ln2->saveHostToNpy(offset_ln2, B * T * C,
+                                           "/tmp/c12.l" + std::to_string(l) + ".gen" + std::to_string(genIndex) +
+                                           "_uut.npy");
+                        ln2_mean->saveHostToNpy(offset_ln2_mean, B * T,
+                                                "/tmp/c13.l" + std::to_string(l) + ".gen" + std::to_string(genIndex) +
+                                                "_uut.npy");
+                        ln2_rstd->saveHostToNpy(offset_ln2_rstd, B * T,
+                                                "/tmp/c14.l" + std::to_string(l) + ".gen" + std::to_string(genIndex) +
+                                                "_uut.npy");
+                    }
                 }
 
                 {
@@ -661,9 +717,15 @@ namespace llmsycl::model {
                             fcb->getDeviceBuffer() + offset_fcb,
                             B, T, C, 4 * C
                     );
-                    kernel.Launch(q, 512);
-                    fch->syncBlockingD2H();
-                    fch->saveHostToNpy(offset_fch, B * T * 4 * C, "/tmp/c15.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
+                    vec_events.push_back(
+                            kernel.Launch(q, 512, vec_events.back())
+                    );
+                    if (!disableTensorDumping) {
+                        fch->syncBlockingD2H();
+                        fch->saveHostToNpy(offset_fch, B * T * 4 * C,
+                                           "/tmp/c15.l" + std::to_string(l) + ".gen" + std::to_string(genIndex) +
+                                           "_uut.npy");
+                    }
                 }
 
                 {
@@ -672,10 +734,15 @@ namespace llmsycl::model {
                             fch->getDeviceBuffer() + offset_fch,
                             B * T * 4 * C
                     );
-                    kernel.Launch(q, 512);
-                    fch_gelu->syncBlockingD2H();
-                    fch_gelu->saveHostToNpy(offset_fch_gelu, B * T * 4 * C,
-                                            "/tmp/c16.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
+                    vec_events.push_back(
+                            kernel.Launch(q, 512, vec_events.back())
+                    );
+                    if (!disableTensorDumping) {
+                        fch_gelu->syncBlockingD2H();
+                        fch_gelu->saveHostToNpy(offset_fch_gelu, B * T * 4 * C,
+                                                "/tmp/c16.l" + std::to_string(l) + ".gen" + std::to_string(genIndex) +
+                                                "_uut.npy");
+                    }
                 }
 
                 {
@@ -686,9 +753,15 @@ namespace llmsycl::model {
                             fcprojb->getDeviceBuffer() + offset_fcprojb,
                             B, T, 4 * C, C
                     );
-                    kernel.Launch(q, 512);
-                    fcproj->syncBlockingD2H();
-                    fcproj->saveHostToNpy(offset_fcproj, B * T * C, "/tmp/c17.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
+                    vec_events.push_back(
+                            kernel.Launch(q, 512, vec_events.back())
+                    );
+                    if (!disableTensorDumping) {
+                        fcproj->syncBlockingD2H();
+                        fcproj->saveHostToNpy(offset_fcproj, B * T * C,
+                                              "/tmp/c17.l" + std::to_string(l) + ".gen" + std::to_string(genIndex) +
+                                              "_uut.npy");
+                    }
                 }
 
                 {
@@ -697,19 +770,26 @@ namespace llmsycl::model {
                             residual2->getDeviceBuffer() + offset_residual2,
                             fcproj->getDeviceBuffer() + offset_fcproj,
                             B * T * C);
-                    kernel.Launch(q, 512);
-                    residual3->syncBlockingD2H();
-                    residual3->saveHostToNpy(offset_residual3, B * T * C,
-                                             "/tmp/c18.l" +std::to_string(l)+".gen"+std::to_string(genIndex)+"_uut.npy");
+                    vec_events.push_back(
+                            kernel.Launch(q, 512, vec_events.back())
+                    );
+                    if (!disableTensorDumping) {
+                        residual3->syncBlockingD2H();
+                        residual3->saveHostToNpy(offset_residual3, B * T * C,
+                                                 "/tmp/c18.l" + std::to_string(l) + ".gen" + std::to_string(genIndex) +
+                                                 "_uut.npy");
+                    }
                 }
             }
 
             // last residual is in residual3
             residual = residual3.get();
             residual_offset = (L - 1) * B * T * C;
-            residual->syncBlockingD2H();
-            residual->saveHostToNpy(residual_offset, B * T * C, "/tmp/c19.gen"+std::to_string(genIndex)+"_uut.npy");
-
+            if (!disableTensorDumping) {
+                residual->syncBlockingD2H();
+                residual->saveHostToNpy(residual_offset, B * T * C,
+                                        "/tmp/c19.gen" + std::to_string(genIndex) + "_uut.npy");
+            }
             {
                 kernels::LayerNorm kernel(
                         lnf->getDeviceBuffer() + 0,
@@ -720,13 +800,17 @@ namespace llmsycl::model {
                         lnfb->getDeviceBuffer() + 0,
                         B, T, C
                 );
-                kernel.Launch(q, 512);
-                lnf->syncBlockingD2H();
-                lnf->saveHostToNpy(0, B * T * C, "/tmp/c20.gen"+std::to_string(genIndex)+"_uut.npy");
-                lnf_mean->syncBlockingD2H();
-                lnf_mean->saveHostToNpy(0, B * T, "/tmp/c21.gen"+std::to_string(genIndex)+"_uut.npy");
-                lnf_rstd->syncBlockingD2H();
-                lnf_rstd->saveHostToNpy(0, B * T, "/tmp/c22.gen"+std::to_string(genIndex)+"_uut.npy");
+                vec_events.push_back(
+                        kernel.Launch(q, 512, vec_events.back())
+                );
+                if (!disableTensorDumping) {
+                    lnf->syncBlockingD2H();
+                    lnf->saveHostToNpy(0, B * T * C, "/tmp/c20.gen" + std::to_string(genIndex) + "_uut.npy");
+                    lnf_mean->syncBlockingD2H();
+                    lnf_mean->saveHostToNpy(0, B * T, "/tmp/c21.gen" + std::to_string(genIndex) + "_uut.npy");
+                    lnf_rstd->syncBlockingD2H();
+                    lnf_rstd->saveHostToNpy(0, B * T, "/tmp/c22.gen" + std::to_string(genIndex) + "_uut.npy");
+                }
             }
 
             {
@@ -738,9 +822,13 @@ namespace llmsycl::model {
                         B, T, C, Vp,
                         false
                 );
-                kernel.Launch(q, 512);
-                output->syncBlockingD2H();
-                output->saveHostToNpy(0, B * T * Vp, "/tmp/c23.gen"+std::to_string(genIndex)+"_uut.npy");
+                vec_events.push_back(
+                        kernel.Launch(q, 512, vec_events.back())
+                );
+                if (!disableTensorDumping) {
+                    output->syncBlockingD2H();
+                    output->saveHostToNpy(0, B * T * Vp, "/tmp/c23.gen" + std::to_string(genIndex) + "_uut.npy");
+                }
             }
         }
 
@@ -752,7 +840,7 @@ namespace llmsycl::model {
             return (*state * 0x2545F4914F6CDD1Dull) >> 32;
         }
 
-        int sample_softmax(const float* logits, int n, float coin) {
+        int sample_softmax(const float *logits, int n, float coin) {
             // sample index from logits (converted to probabilities using softmax)
             // coin is a random number in [0, 1), usually from random_f32()
             double norm = 0;
@@ -783,7 +871,7 @@ namespace llmsycl::model {
             int val_loss_every = 20; // every how many steps do we eval validation loss?
             int val_max_steps = 20; // how many batches max do we eval for validation loss?
             int sample_every = 20; // every how many steps to do inference?
-            int genT = 64; // number of steps of inference we will do
+            int genT = generationBound; // number of steps of inference we will do
 
             logger->info("+-----------------------+----------------------------------------------------+\n");
             logger->info("| Parameter             | Value                                              |\n");
@@ -831,7 +919,7 @@ namespace llmsycl::model {
                 // we re-calculate the forward pass for all of (B,T) positions from scratch
                 // but the inference here is just for sanity checking anyway
                 // and we can maybe optimize a bit more later, with careful tests
-                feedforward(sycl_queue, gen_tokens, NULL, B, T, t-1);
+                feedforward(sycl_queue, gen_tokens, NULL, B, T, t - 1);
                 // furthermore, below we're only using b=0 (i.e. the first row) of all B rows
                 // we're in principle running B "inference streams" in parallel here
                 // only using position 0 because it's a bit faster (copy less probs from GPU -> CPU)

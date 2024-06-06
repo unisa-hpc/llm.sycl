@@ -33,8 +33,15 @@ namespace llmsycl::kernels {
             addScalarParamToReport("C", C);
         }
 
-        std::vector<sycl::event> Launch(sycl::queue &q, int blockSize) override {
+        std::vector<sycl::event> Launch(
+                sycl::queue &q,
+                int blockSize,
+                const std::vector<sycl::event> &dependencies) override {
+
             auto event = q.submit([&](sycl::handler &h) {
+
+                h.depends_on(dependencies);
+
                 const int bound = this->B * this->T * this->C;
                 const int capturedB = this->B;
                 const int capturedT = this->T;
@@ -43,14 +50,6 @@ namespace llmsycl::kernels {
                 auto capturedWpe = this->dWpe;
                 auto capturedOut = this->dOut;
                 auto capturedIn = this->dIn;
-
-                logger->trace("bound: {}", bound);
-                logger->trace("capturedB: {}", capturedB);
-                logger->trace("capturedT: {}", capturedT);
-                logger->trace("capturedC: {}", capturedC);
-                logger->trace("blockSize: {}", blockSize);
-                logger->trace("globalSize: {}", Helpers::MakeDivisible(B * T * C, blockSize));
-
                 h.parallel_for(
                         sycl::nd_range<1>(
                                 sycl::range<1>(Helpers::MakeDivisible(B * T * C, blockSize)),

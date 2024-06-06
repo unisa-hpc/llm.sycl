@@ -10,6 +10,8 @@
 
 spdlog::logger *logger;
 int globalBatchsize;
+int globalGeneration;
+bool globalDisableTensorDumping;
 bool globalIsSilent;
 std::string globalDirData;
 std::string globalDirLog;

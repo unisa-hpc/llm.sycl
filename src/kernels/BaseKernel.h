@@ -22,11 +22,11 @@ namespace llmsycl::kernels {
                 kernelName(kernelName) {
         }
 
-        virtual std::vector<sycl::event> Launch(sycl::queue &q, int blockSize)=0;
+        virtual std::vector<sycl::event> Launch(sycl::queue &q, int blockSize, const std::vector<sycl::event> &dependencies)=0;
 
-        size_t LaunchBlockingAndMeasureNanoSec(sycl::queue &q, int blockSize) {
+        size_t LaunchBlockingAndMeasureNanoSec(sycl::queue &q, int blockSize, const std::vector<sycl::event> &dependencies) {
             size_t sumElapsed = 0;
-            auto vecEvents = Launch(q, blockSize);
+            auto vecEvents = Launch(q, blockSize, dependencies);
             for(auto &e: vecEvents){
                 e.wait();
             }

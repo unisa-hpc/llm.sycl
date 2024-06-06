@@ -29,8 +29,13 @@ namespace llmsycl::kernels {
             addScalarParamToReport("N", N);
         }
 
-        std::vector<sycl::event> Launch(sycl::queue &q, int blockSize) override {
+        std::vector<sycl::event> Launch(
+                sycl::queue &q,
+                int blockSize,
+                const std::vector<sycl::event> &dependencies) override {
+
             auto event = q.submit([&](sycl::handler &h) {
+                h.depends_on(dependencies);
                 auto capturedOutput = dOutput;
                 auto capturedInput1 = dInput1;
                 auto capturedInput2 = dInput2;

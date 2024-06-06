@@ -33,11 +33,17 @@ namespace llmsycl::kernels {
             addScalarParamToReport("invTemperature", invTemperature);
             addScalarParamToReport("N", N);
             addScalarParamToReport("C", C);
-
         }
 
-        std::vector<sycl::event> Launch(sycl::queue &q, int blockSize) override {
+        std::vector<sycl::event> Launch(
+                sycl::queue &q,
+                int blockSize,
+                const std::vector<sycl::event> &dependencies) override {
+
             auto event = q.submit([&](sycl::handler &h) {
+
+                h.depends_on(dependencies);
+
                 auto capturedOut = dOut;
                 auto capturedInp = dInp;
                 const int capturedN = this->N;
@@ -45,7 +51,7 @@ namespace llmsycl::kernels {
                 const float capturedInvTemp = this->invTemperature;
 
                 assert(capturedC % 4  == 0);
-                sycl::stream os(10240, 1280, h);
+                //sycl::stream os(10240, 1280, h);
 
                 h.parallel_for(
                         ///TODO: Check this coef 32 in the worksize. Is it correct?
@@ -129,7 +135,6 @@ namespace llmsycl::kernels {
                                         os << "capturedOut @ " << iidx0 << ": " << "ev=" <<ev << " norm=" << norm << "ev*norm=" << ev*norm << sycl::endl;
                                     }
                                 }*/
-
                                 capturedOut[idx * capturedC + i] = ev * norm;
                             }
 

@@ -14,6 +14,8 @@ int main(int argc, char *argv[]) {
 
     argparse::ArgumentParser program("LLM_SYCL");
     program.add_argument("-b", "--batch").default_value(1).store_into(globalBatchsize);
+    program.add_argument("-g", "--gen").default_value(64).store_into(globalGeneration);
+    program.add_argument("-x", "--disabledumps").default_value(false).store_into(globalDisableTensorDumping);
     program.add_argument("-d", "--datadir").default_value("../").store_into(globalDirData);
     program.add_argument("-l", "--logdir").default_value("/tmp/").store_into(globalDirLog);
     program.add_argument("-s", "--silent").flag().store_into(globalIsSilent);
@@ -57,7 +59,7 @@ int main(int argc, char *argv[]) {
 
 
     // Create a GPT2 model
-    llmsycl::model::Model gpt2;
+    llmsycl::model::Model gpt2(globalBatchsize, globalGeneration, globalDisableTensorDumping);
     gpt2.inference(sycl_queue);
 
     logger->info("Finished inference.");

@@ -38,8 +38,14 @@ namespace llmsycl::kernels {
             addScalarParamToReport("hasBias", hasBias);
         }
 
-        std::vector<sycl::event> Launch(sycl::queue &q, int blockSize) override {
+        std::vector<sycl::event> Launch(
+                sycl::queue &q,
+                int blockSize,
+                const std::vector<sycl::event> &dependencies) override {
+
             std::vector<sycl::event> events;
+            sycl::event mklEvent1;
+
             auto capturedInp = dInp;
             auto capturedWeight = dWeight;
             auto capturedBias = dBias;
@@ -65,7 +71,7 @@ namespace llmsycl::kernels {
                 const float alpha = 1.0f;
                 const float beta = 0.0f;
                 //cublasSgemm(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N, OC, B*T, C, &alpha, weight, C, inp, C, &beta, out, OC));
-                auto event = oneapi::mkl::blas::column_major::gemm(
+                mklEvent1 = oneapi::mkl::blas::column_major::gemm(
                         q,
                         oneapi::mkl::transpose::trans,
                         oneapi::mkl::transpose::nontrans,
@@ -77,13 +83,19 @@ namespace llmsycl::kernels {
                         C,
                         beta,
                         dOut,
-                        OC
+                        OC,
+                        dependencies
                 );
-                events.push_back(event);
+                //event.wait_and_throw();
+                events.push_back(mklEvent1);
+                //q.wait_and_throw();
             }
 
             if (hasBias) {
                 auto event = q.submit([&](sycl::handler &h) {
+
+                    h.depends_on(mklEvent1);
+
                     const int capturedB = this->B;
                     const int capturedT = this->T;
                     const int capturedC = this->C;

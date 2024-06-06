@@ -74,7 +74,8 @@ namespace llmsycl::kernels {
          */
         std::vector<sycl::event> Launch(
                 sycl::queue &q,
-                int blockSize) override {
+                int blockSize,
+                const std::vector<sycl::event> &dependencies) override {
 
             std::vector<sycl::event> events;
             int HS = C / NH; // head size
@@ -82,8 +83,6 @@ namespace llmsycl::kernels {
             // STEP 1
             // permute and separate inp from (B, T, 3, NH, HS) to 3X (B, NH, T, HS)
             {
-                /// TODO: tnInp.save(inpOffset + 0, B * T * 3 * C, "/tmp/xInp_uut.npy");
-                //core::saveFromDeviceToNpy(q, dInp, B * T * 3 * C, "/tmp/xInp_uut.npy");
                 Permute permute_kernel(
                         dQkvr + 0 * B * T * C,
                         dQkvr + 1 * B * T * C,
@@ -91,30 +90,23 @@ namespace llmsycl::kernels {
                         dInp,
                         B, T, NH, HS);
 
-                auto e = permute_kernel.Launch(q, blockSize);
+                auto e = permute_kernel.Launch(q, blockSize, {dependencies});
                 for (auto &event: e) {
                     events.push_back(event);
                 }
             }
-            /// TODO: tnQkvr.save(qkvrOffset + 0 * B * T * C, B * T * C, "/tmp/xq_uut.npy"); // ok
-            /// TODO: tnQkvr.save(qkvrOffset + 1 * B * T * C, B * T * C, "/tmp/xk_uut.npy"); // ok
-            /// TODO: tnQkvr.save(qkvrOffset + 2 * B * T * C, B * T * C, "/tmp/xv_uut.npy"); // ok
 
             auto dQuery = dQkvr + 0 * B * T * C;
             auto dKey = dQkvr + 1 * B * T * C;
             auto dValue = dQkvr + 2 * B * T * C;
-            //core::saveFromDeviceToNpy(q, dQuery, B * T * C, "/tmp/xq_uut.npy");
-            //core::saveFromDeviceToNpy(q, dKey, B * T * C, "/tmp/xk_uut.npy");
-            //core::saveFromDeviceToNpy(q, dValue, B * T * C, "/tmp/xv_uut.npy");
-
             auto preAtt = dInp;
 
             // STEP 2 - Creating sub buffers needed for oneMKL.
             //core::Tensor<float> tnTmp({(size_t) B * NH * T * T});
             {
+                //q.wait_and_throw();
                 const float alpha = 1.0f;
                 const float beta = 0.0f;
-                q.wait_and_throw();
                 auto e = oneapi::mkl::blas::column_major::gemm_batch(
                         q,
                         oneapi::mkl::transpose::trans,
@@ -128,41 +120,34 @@ namespace llmsycl::kernels {
                         beta,
                         preAtt,
                         T, T * T,
-                        B * NH
+                        B * NH,
+                        events
                 );
                 events.push_back(e);
-                q.wait_and_throw();
             }
 
 
             // STEP 3 - Softmax
             {
-                //tnTmp.save( "/tmp/xa_uut.npy"); // Almost ok
-                ///TODO: tnInp.save(0, B * NH * T * T, "/tmp/xa_uut.npy"); // WRONG
-                //core::saveFromDeviceToNpy(q, preAtt, B * NH * T * T, "/tmp/xa_uut.npy");
                 Softmax softmax_kernel(
                         dAtt,
                         preAtt,
                         1.0f / std::sqrt((float) HS),
                         B * NH, T
                 );
-                auto e = softmax_kernel.Launch(q, blockSizeSoftMax);
+                auto e = softmax_kernel.Launch(q, blockSizeSoftMax, events);
                 for (auto &event: e) {
                     events.push_back(event);
                 }
-                ///TODO: tnAtt.save(attOffset + 0, B * NH * T * T, "/tmp/xb_uut.npy"); // WRONG
-                //core::saveFromDeviceToNpy(q, dAtt, B * NH * T * T, "/tmp/xb_uut.npy");
             }
-
-            q.wait_and_throw();
 
             // STEP 4 - gemm
             {
-
+                //q.wait_and_throw();
                 const float alpha = 1.0f;
                 const float beta = 0.0f;
                 // y = att @ v # (B, nh, T, T) @ (B, nh, T, hs) -> (B, nh, T, hs)
-                oneapi::mkl::blas::column_major::gemm_batch(
+                auto e = oneapi::mkl::blas::column_major::gemm_batch(
                         q,
                         oneapi::mkl::transpose::nontrans,
                         oneapi::mkl::transpose::nontrans,
@@ -176,11 +161,11 @@ namespace llmsycl::kernels {
                         beta,
                         dInp,
                         HS, T * HS,
-                        B * NH
+                        B * NH,
+                        events
                 );
+                events.push_back(e);
             }
-
-            q.wait_and_throw();
 
             // STEP 5 - Un-permute
             {
@@ -189,14 +174,11 @@ namespace llmsycl::kernels {
                         dInp,
                         B, T, NH, HS
                 );
-                auto e = unpermute_kernel.Launch(q, blockSize);
+                auto e = unpermute_kernel.Launch(q, blockSize, events);
                 for (auto &event: e) {
                     events.push_back(event);
                 }
             }
-
-            q.wait_and_throw();
-
             //std::exit(111);
 
             report();
