@@ -153,13 +153,6 @@ namespace llmsycl::model {
 
             // create memory for model parameters on the device
             {
-                /*
-                float **ptrs[] = {
-                        &params->wte, &params->wpe, &params->ln1w, &params->ln1b, &params->qkvw, &params->qkvb,
-                        &params->attprojw, &params->attprojb, &params->ln2w, &params->ln2b, &params->fcw, &params->fcb,
-                        &params->fcprojw, &params->fcprojb, &params->lnfw, &params->lnfb
-                };
-                */
                 auto *params_memory_cpu = new float[num_parameters];
                 freadCheck(params_memory_cpu, sizeof(float), num_parameters, model_file);
                 size_t offsetAccumulator = 0;
@@ -260,17 +253,10 @@ namespace llmsycl::model {
                                                              params_memory_cpu + offsetAccumulator);
                 offsetAccumulator += param_sizes[15];
 
-
                 delete[] params_memory_cpu;
             }
 
             fcloseCheck(model_file);
-
-            //acts_memory = NULL;
-            //grads_memory = NULL;
-            //m_memory = NULL;
-            //v_memory = NULL;
-            //grads_acts_memory = NULL;
             inputs = NULL;
             targets = NULL;
             //cpu_losses = NULL;
@@ -313,15 +299,9 @@ namespace llmsycl::model {
             fcloseCheck(state_file);
 
             int allok = 1;
-
-            ///TODO: Call feedforward here
-
-            ///TODO: compare against the gold data (expected_logits)
-
         }
 
         void feedforward(sycl::queue &q, int *inputs, int *targets, int B, int T, int genIndex) {
-
             // convenience parameters
             int V = vocab_size;
             int Vp = padded_vocab_size;
@@ -377,14 +357,6 @@ namespace llmsycl::model {
                 }
 
                 {
-                    /*
-                    float** ptrs[] = {
-                            &acts->encoded, &acts->ln1, &acts->ln1_mean, &acts->ln1_rstd, &acts->atty,
-                            &acts->att, &acts->attproj, &acts->residual2, &acts->ln2, &acts->ln2_mean,
-                            &acts->ln2_rstd, &acts->fch, &acts->fch_gelu, &acts->fcproj, &acts->residual3, &acts->lnf,
-                            &acts->lnf_mean, &acts->lnf_rstd, &acts->losses, &acts->qkvr, &acts->output
-                    };*/
-
                     // No need to copy data here, just allocate memory.
                     // 0
                     encoded = std::make_unique<core::Tensor<float>>(q, std::vector({act_sizes[0]}));
@@ -580,40 +552,6 @@ namespace llmsycl::model {
 
                 // now do the forward pass
                 {
-                    /*
-                    void layernorm_forward(
-                            float* out,
-                            float* mean,
-                            float* rstd,
-                            float* inp,
-                            float* weight,
-                            float* bias,
-                            int B, int T, int C)
-                    layernorm_forward(
-                            l_ln1,
-                            l_ln1_mean,
-                            l_ln1_rstd,
-                            residual,
-                            l_ln1w,
-                            l_ln1b,
-                            B, T, C);
-
-                    LayerNorm(
-                            core::Tensor<float> &tnOut,
-                            size_t outOffset,
-                            core::Tensor<float> &tnMean,
-                            size_t meanOffset,
-                            core::Tensor<float> &tnRstd,
-                            size_t rstdOffset,
-                            core::Tensor<float> &tnInp,
-                            size_t inpOffset,
-                            core::Tensor<float> &tnWeight,
-                            size_t weightOffset,
-                            core::Tensor<float> &tnBias,
-                            size_t biasOffset,
-                            int B, int T, int C
-                    )
-                    */
                     kernels::LayerNorm kernel(
                             ln1->getDeviceBuffer() + offset_ln1,
                             ln1_mean->getDeviceBuffer() + offset_ln1_mean,
@@ -636,32 +574,6 @@ namespace llmsycl::model {
                 }
 
                 {
-                    /*
-                    void matmul_forward_cublaslt(
-                            float* out,
-                            float* inp,
-                            float* weight,
-                            float* bias,
-                            int B, int T, int C, int OC);
-                    matmul_forward_cublaslt(
-                            scratch,
-                            l_ln1,
-                            l_qkvw,
-                            l_qkvb,
-                            B, T, C, 3 * C);
-                    MatmulBias(
-                            core::Tensor<float> &tnOut,
-                            size_t outOffset,
-                            core::Tensor<float> &tnInp,
-                            size_t inpOffset,
-                            core::Tensor<float> &tnWeight,
-                            size_t weightOffset,
-                            core::Tensor<float> &tnBias,
-                            size_t biasOffset,
-                            int B, int T, int C, int OC,
-                            bool hasBias = true
-                    )
-                    */
                     kernels::MatmulBias kernel(
                             scratch->getDeviceBuffer() + 0,
                             ln1->getDeviceBuffer() + offset_ln1,
@@ -676,30 +588,6 @@ namespace llmsycl::model {
                 }
 
                 {
-                    /*
-                    void attention_forward(
-                            float* out,
-                            float* qkvr,
-                            float* att,
-                            float* inp,
-                            int B, int T, int C, int NH);
-
-                     attention_forward(l_atty, l_qkvr, l_att, scratch, B, T, C, NH);
-
-                     Attention(
-                            core::Tensor<float> &tnOut,
-                            size_t outOffset,
-                            core::Tensor<float> &tnQkvr,
-                            size_t qkvrOffset,
-                            core::Tensor<float> &tnAtt,
-                            size_t attOffset,
-                            core::Tensor<float> &tnInp,
-                            size_t inpOffset,
-                            int B, int T, int C, int NH,
-                            int blockSizeSoftMax
-                    )
-                    */
-
                     ///TODO: Fix this kernel.
                     /// atty and att are wrong.
                     /// qkvr is correct.
@@ -722,27 +610,6 @@ namespace llmsycl::model {
                 }
 
                 {
-                    /*
-                    void matmul_forward_cublaslt(
-                            float* out,
-                            float* inp,
-                            float* weight,
-                            float* bias,
-                            int B, int T, int C, int OC);
-                    matmul_forward_cublaslt(l_attproj, l_atty, l_attprojw, l_attprojb, B, T, C, C)
-                    MatmulBias(
-                            core::Tensor<float> &tnOut,
-                            size_t outOffset,
-                            core::Tensor<float> &tnInp,
-                            size_t inpOffset,
-                            core::Tensor<float> &tnWeight,
-                            size_t weightOffset,
-                            core::Tensor<float> &tnBias,
-                            size_t biasOffset,
-                            int B, int T, int C, int OC,
-                            bool hasBias = true
-                    )
-                    */
                     kernels::MatmulBias kernel(
                             attproj->getDeviceBuffer() + offset_attproj,
                             atty->getDeviceBuffer() + offset_atty,
@@ -756,18 +623,6 @@ namespace llmsycl::model {
                 }
 
                 {
-                    /*
-                    void residual_forward(float* out, float* inp1, float* inp2, int N);
-                    residual_forward(l_residual2, residual, l_attproj, B * T * C);
-                    Residual(
-                            core::Tensor<float> &tnOutput,
-                            size_t outputOffset,
-                            core::Tensor<float> &tnInput1,
-                            size_t input1Offset,
-                            core::Tensor<float> &tnInput2,
-                            size_t input2Offset,
-                            int N );
-                     */
                     kernels::Residual kernel(
                             residual2->getDeviceBuffer() + offset_residual2,
                             residual->getDeviceBuffer() + residual_offset,
@@ -780,33 +635,6 @@ namespace llmsycl::model {
                 }
 
                 {
-                    /*
-                    void layernorm_forward(
-                            float* out,
-                            float* mean,
-                            float* rstd,
-                            float* inp,
-                            float* weight,
-                            float* bias,
-                            int B, int T, int C)
-                    layernorm_forward(l_ln2, l_ln2_mean, l_ln2_rstd, l_residual2, l_ln2w, l_ln2b, B, T, C);
-
-                    LayerNorm(
-                            core::Tensor<float> &tnOut,
-                            size_t outOffset,
-                            core::Tensor<float> &tnMean,
-                            size_t meanOffset,
-                            core::Tensor<float> &tnRstd,
-                            size_t rstdOffset,
-                            core::Tensor<float> &tnInp,
-                            size_t inpOffset,
-                            core::Tensor<float> &tnWeight,
-                            size_t weightOffset,
-                            core::Tensor<float> &tnBias,
-                            size_t biasOffset,
-                            int B, int T, int C
-                    )
-                    */
                     kernels::LayerNorm kernel(
                             ln2->getDeviceBuffer() + offset_ln2,
                             ln2_mean->getDeviceBuffer() + offset_ln2_mean,
@@ -826,28 +654,6 @@ namespace llmsycl::model {
                 }
 
                 {
-                    /*
-                    void matmul_forward_cublaslt(
-                            float* out,
-                            float* inp,
-                            float* weight,
-                            float* bias,
-                            int B, int T, int C, int OC);
-                    matmul_forward_cublaslt(l_fch, l_ln2, l_fcw, l_fcb, B, T, C, 4 * C);
-                    MatmulBias(
-                            core::Tensor<float> &tnOut,
-                            size_t outOffset,
-                            core::Tensor<float> &tnInp,
-                            size_t inpOffset,
-                            core::Tensor<float> &tnWeight,
-                            size_t weightOffset,
-                            core::Tensor<float> &tnBias,
-                            size_t biasOffset,
-                            int B, int T, int C, int OC,
-                            bool hasBias = true
-                    )
-                    */
-
                     kernels::MatmulBias kernel(
                             fch->getDeviceBuffer() + offset_fch,
                             ln2->getDeviceBuffer() + offset_ln2,
@@ -861,16 +667,6 @@ namespace llmsycl::model {
                 }
 
                 {
-                    /*
-                    void gelu_forward(float* out, const float* inp, int N);
-                    gelu_forward(l_fch_gelu, l_fch, B * T * 4 * C);
-                    Gelu(
-                        core::Tensor<float> &tnOutput,
-                        size_t outputOffset,
-                        core::Tensor<float> &tnInput,
-                        size_t inputOffset,
-                        int N)
-                    */
                     kernels::Gelu kernel(
                             fch_gelu->getDeviceBuffer() + offset_fch_gelu,
                             fch->getDeviceBuffer() + offset_fch,
@@ -883,28 +679,6 @@ namespace llmsycl::model {
                 }
 
                 {
-                    /*
-                    void matmul_forward_cublaslt(
-                            float* out,
-                            float* inp,
-                            float* weight,
-                            float* bias,
-                            int B, int T, int C, int OC);
-                    matmul_forward_cublaslt(l_fcproj, l_fch_gelu, l_fcprojw, l_fcprojb, B, T, 4 * C, C);
-                    MatmulBias(
-                            core::Tensor<float> &tnOut,
-                            size_t outOffset,
-                            core::Tensor<float> &tnInp,
-                            size_t inpOffset,
-                            core::Tensor<float> &tnWeight,
-                            size_t weightOffset,
-                            core::Tensor<float> &tnBias,
-                            size_t biasOffset,
-                            int B, int T, int C, int OC,
-                            bool hasBias = true
-                    )
-                    */
-
                     kernels::MatmulBias kernel(
                             fcproj->getDeviceBuffer() + offset_fcproj,
                             fch_gelu->getDeviceBuffer() + offset_fch_gelu,
@@ -918,18 +692,6 @@ namespace llmsycl::model {
                 }
 
                 {
-                    /*
-                    void residual_forward(float* out, float* inp1, float* inp2, int N);
-                    residual_forward(l_residual3, l_residual2, l_fcproj, B * T * C)
-                    Residual(
-                            core::Tensor<float> &tnOutput,
-                            size_t outputOffset,
-                            core::Tensor<float> &tnInput1,
-                            size_t input1Offset,
-                            core::Tensor<float> &tnInput2,
-                            size_t input2Offset,
-                            int N );
-                     */
                     kernels::Residual kernel(
                             residual3->getDeviceBuffer() + offset_residual3,
                             residual2->getDeviceBuffer() + offset_residual2,
@@ -949,33 +711,6 @@ namespace llmsycl::model {
             residual->saveHostToNpy(residual_offset, B * T * C, "/tmp/c19.gen"+std::to_string(genIndex)+"_uut.npy");
 
             {
-                /*
-                void layernorm_forward(
-                        float* out,
-                        float* mean,
-                        float* rstd,
-                        float* inp,
-                        float* weight,
-                        float* bias,
-                        int B, int T, int C)
-                layernorm_forward(acts.lnf, acts.lnf_mean, acts.lnf_rstd, residual, params.lnfw, params.lnfb, B, T, C);
-
-                LayerNorm(
-                        core::Tensor<float> &tnOut,
-                        size_t outOffset,
-                        core::Tensor<float> &tnMean,
-                        size_t meanOffset,
-                        core::Tensor<float> &tnRstd,
-                        size_t rstdOffset,
-                        core::Tensor<float> &tnInp,
-                        size_t inpOffset,
-                        core::Tensor<float> &tnWeight,
-                        size_t weightOffset,
-                        core::Tensor<float> &tnBias,
-                        size_t biasOffset,
-                        int B, int T, int C
-                )
-                */
                 kernels::LayerNorm kernel(
                         lnf->getDeviceBuffer() + 0,
                         lnf_mean->getDeviceBuffer() + 0,
@@ -995,28 +730,6 @@ namespace llmsycl::model {
             }
 
             {
-                /*
-                void matmul_forward_cublaslt(
-                        float* out,
-                        float* inp,
-                        float* weight,
-                        float* bias,
-                        int B, int T, int C, int OC);
-                matmul_forward_cublaslt(acts.output, acts.lnf, params.wte, NULL, B, T, C, Vp);
-                MatmulBias(
-                        core::Tensor<float> &tnOut,
-                        size_t outOffset,
-                        core::Tensor<float> &tnInp,
-                        size_t inpOffset,
-                        core::Tensor<float> &tnWeight,
-                        size_t weightOffset,
-                        core::Tensor<float> &tnBias,
-                        size_t biasOffset,
-                        int B, int T, int C, int OC,
-                        bool hasBias = true
-                )
-                */
-
                 kernels::MatmulBias kernel(
                         output->getDeviceBuffer() + 0,
                         lnf->getDeviceBuffer() + 0,
@@ -1029,27 +742,6 @@ namespace llmsycl::model {
                 output->syncBlockingD2H();
                 output->saveHostToNpy(0, B * T * Vp, "/tmp/c23.gen"+std::to_string(genIndex)+"_uut.npy");
             }
-
-            /*
-            // also forward the cross-entropy loss function if we have the targets
-            if (targets != NULL) {
-                // fused classifier: does the forward pass and first part of the backward pass
-                // we're passing dlosses = NULL, which will default them to 1.0f/(B*T), i.e. uniform loss
-                fused_classifier3(acts.output, acts.losses, NULL, model->targets, B, T, V, Vp);
-                // for convenience also evaluate the mean loss (TODO re-think this compute+sync point)
-                // move the (B,T) losses to CPU
-                cudaCheck(cudaMemcpy(model->cpu_losses, acts.losses, B * T * sizeof(float), cudaMemcpyDeviceToHost));
-                float mean_loss = 0.0f;
-                for (int i=0; i<B*T; i++) { mean_loss += model->cpu_losses[i]; }
-                mean_loss /= B*T;
-                model->mean_loss = mean_loss;
-
-            } else {
-                // if we don't have targets, we don't have loss
-                model->mean_loss = -1.0f;
-            }
-            */
-
         }
 
         unsigned int random_u32(unsigned long long *state) {
@@ -1092,25 +784,7 @@ namespace llmsycl::model {
             int val_max_steps = 20; // how many batches max do we eval for validation loss?
             int sample_every = 20; // every how many steps to do inference?
             int genT = 64; // number of steps of inference we will do
-            /*
-            for (int i = 1; i < argc; i+=2) {
-                if (i + 1 >= argc) { error_usage(); } // must have arg after flag
-                if (argv[i][0] != '-') { error_usage(); } // must start with dash
-                if (strlen(argv[i]) != 2) { error_usage(); } // must be -x (one dash, one letter)
-                // read in the args
-                if (argv[i][1] == 'i') { train_data_pattern = argv[i+1]; }
-                else if (argv[i][1] == 'j') { val_data_pattern = argv[i+1]; }
-                else if (argv[i][1] == 'o') { output_log_file = argv[i+1]; }
-                else if (argv[i][1] == 'b') { B = atoi(argv[i+1]); }
-                else if (argv[i][1] == 't') { T = atoi(argv[i+1]); }
-                else if (argv[i][1] == 'l') { learning_rate = atof(argv[i+1]); }
-                else if (argv[i][1] == 'v') { val_loss_every = atoi(argv[i+1]); }
-                else if (argv[i][1] == 'm') { val_max_steps = atoi(argv[i+1]); }
-                else if (argv[i][1] == 's') { sample_every = atoi(argv[i+1]); }
-                else if (argv[i][1] == 'g') { genT = atoi(argv[i+1]); }
-                else { error_usage(); }
-            }
-            */
+
             logger->info("+-----------------------+----------------------------------------------------+\n");
             logger->info("| Parameter             | Value                                              |\n");
             logger->info("+-----------------------+----------------------------------------------------+\n");
@@ -1127,7 +801,6 @@ namespace llmsycl::model {
             logger->info("+-----------------------+----------------------------------------------------+\n");
 
             // build the GPT-2 model from a checkpoint
-
             loadCheckpoint(sycl_queue, "../data/dataset_prepared/gpt2_124M.bin");
             logger->info("| max_sequence_length T | {} |\n", max_seq_len);
             logger->info("| vocab_size V          | {} |\n", vocab_size);
@@ -1137,22 +810,6 @@ namespace llmsycl::model {
             logger->info("| channels C            | {} |\n", channels);
             logger->info("| num_parameters        | {} |\n", num_parameters);
             logger->info("+-----------------------+----------------------------------------------------+\n");
-
-            // build DataLoaders for both train and val
-            /*
-            DataLoader train_loader, val_loader;
-            dataloader_init(&train_loader, train_data_pattern, B, T, 0, 1);
-            dataloader_init(&val_loader, val_data_pattern, B, T, 0, 1);
-            int train_num_batches = train_loader.num_tokens / (B*T); // let's do 1 epoch by default for now
-            int val_num_batches = val_loader.num_tokens / (B*T);
-            if (val_num_batches > val_max_steps) { val_num_batches = val_max_steps; }
-            printf("| train_num_batches     | %-50d |\n", train_num_batches);
-            printf("| val_num_batches       | %-50d |\n", val_num_batches);
-            printf("+-----------------------+----------------------------------------------------+\n");
-
-            // print model parameter allocations from gpt2_build_from_checkpoint down here to not mess up our table above
-            printf("allocated %d MiB for model parameters\n", (int)round(model.num_parameters * sizeof(float) / (1024 * 1024)));
-             */
 
             // build the Tokenizer
             Tokenizer tokenizer;
@@ -1166,10 +823,6 @@ namespace llmsycl::model {
             for (int i = 0; i < B * T; ++i) {
                 gen_tokens[i] = GPT2_EOT;
             }
-
-            //DataLoader dataLoader("../data/dataset_prepared/tiny_shakespeare_train.bin", B, T);
-            //dataLoader.reset();
-
 
             // now sample from the model autoregressively
             logger->info("generating:\n---\n");
@@ -1196,10 +849,6 @@ namespace llmsycl::model {
                 //printf("\nCoin: %f, done running feedforward for genIndex: %d\n", coin, t-1);
                 int next_token = sample_softmax(accHostLogits, vocab_size, coin);
                 gen_tokens[t] = next_token;
-
-                //printf("\n");
-                //for (int ii = 0; ii < t + 2; ii++) { printf("%d ", gen_tokens[ii]); }
-                //printf("\n");
 
                 // print the generated token, either using the Tokenizer or a fallback
                 if (tokenizer.init_ok) {
