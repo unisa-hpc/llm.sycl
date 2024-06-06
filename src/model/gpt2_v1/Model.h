@@ -308,7 +308,7 @@ namespace llmsycl::model {
             int allok = 1;
         }
 
-        void feedforward(sycl::queue &q, int *inputs, int *targets, int B, int T, int genIndex) {
+        std::vector<std::vector<sycl::event>> feedforward(sycl::queue &q, int *inputs, int *targets, int B, int T, int genIndex) {
             // convenience parameters
             int V = vocab_size;
             int Vp = padded_vocab_size;
@@ -830,6 +830,7 @@ namespace llmsycl::model {
                     output->saveHostToNpy(0, B * T * Vp, "/tmp/c23.gen" + std::to_string(genIndex) + "_uut.npy");
                 }
             }
+            return vec_events;
         }
 
         unsigned int random_u32(unsigned long long *state) {
@@ -859,9 +860,8 @@ namespace llmsycl::model {
             return n - 1; // in case of rounding errors
         }
 
-        void inference(sycl::queue &sycl_queue) {
-
-            // read in the (optional) command line arguments
+        std::map<int, std::vector<std::vector<sycl::event>>> inference(sycl::queue &sycl_queue) {
+            std::map<int, std::vector<std::vector<sycl::event>>> events_per_gen;
             const char *train_data_pattern = "../data/dataset_prepared/tiny_shakespeare_train.bin";
             const char *val_data_pattern = "../data/dataset_prepared/tiny_shakespeare_val.bin";
             const char *output_log_file = NULL;
@@ -919,7 +919,7 @@ namespace llmsycl::model {
                 // we re-calculate the forward pass for all of (B,T) positions from scratch
                 // but the inference here is just for sanity checking anyway
                 // and we can maybe optimize a bit more later, with careful tests
-                feedforward(sycl_queue, gen_tokens, NULL, B, T, t - 1);
+                events_per_gen[t-1] = feedforward(sycl_queue, gen_tokens, NULL, B, T, t - 1);
                 // furthermore, below we're only using b=0 (i.e. the first row) of all B rows
                 // we're in principle running B "inference streams" in parallel here
                 // only using position 0 because it's a bit faster (copy less probs from GPU -> CPU)
@@ -950,6 +950,7 @@ namespace llmsycl::model {
 
                 //std::exit(44);
             }
+            return events_per_gen;
         }
 
     };

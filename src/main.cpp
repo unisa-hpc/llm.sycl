@@ -9,13 +9,32 @@
 #include "common/common.h"
 #include "model/gpt2_v1/Model.h"
 
+size_t getAccumulatedTime(const std::vector<sycl::event> &events) {
+    size_t accumulatedTime = 0;
+    for (const auto &event: events) {
+        accumulatedTime += event.get_profiling_info<sycl::info::event_profiling::command_end>() -
+                           event.get_profiling_info<sycl::info::event_profiling::command_start>();
+    }
+    return accumulatedTime;
+}
+
+size_t getAccumulatedTime(const std::vector<std::vector<sycl::event>> &events) {
+    size_t accumulatedTime = 0;
+    for (const auto &vEvents: events) {
+        accumulatedTime += getAccumulatedTime(vEvents);
+    }
+    return accumulatedTime;
+}
+
 int main(int argc, char *argv[]) {
     initLogger();
 
+    bool disableProfiling = false;
     argparse::ArgumentParser program("LLM_SYCL");
     program.add_argument("-b", "--batch").default_value(1).store_into(globalBatchsize);
     program.add_argument("-g", "--gen").default_value(64).store_into(globalGeneration);
     program.add_argument("-x", "--disabledumps").default_value(false).store_into(globalDisableTensorDumping);
+    program.add_argument("-y", "--disableprofiling").default_value(false).store_into(disableProfiling);
     program.add_argument("-d", "--datadir").default_value("../").store_into(globalDirData);
     program.add_argument("-l", "--logdir").default_value("/tmp/").store_into(globalDirLog);
     program.add_argument("-s", "--silent").flag().store_into(globalIsSilent);
@@ -46,11 +65,15 @@ int main(int argc, char *argv[]) {
             }
         }
     };
-    auto sycl_queue = sycl::queue(sycl::gpu_selector_v, asycExceptionHandler,
-                                  {
-                                          sycl::property::queue::enable_profiling(),
-                                          //sycl::property::queue::in_order()
-                                  });
+    sycl::queue sycl_queue;
+    if (disableProfiling)
+        sycl_queue = sycl::queue(sycl::gpu_selector_v, asycExceptionHandler);
+    else
+        sycl_queue = sycl::queue(
+                sycl::gpu_selector_v,
+                asycExceptionHandler,
+                {sycl::property::queue::enable_profiling()}
+        );
     logger->info("SYCL queue initialized.");
     logger->info("Device Name: {}", sycl_queue.get_device().get_info<sycl::info::device::name>());
     logger->info("Global Memory: {}", sycl_queue.get_device().get_info<sycl::info::device::global_mem_size>());
@@ -60,7 +83,12 @@ int main(int argc, char *argv[]) {
 
     // Create a GPT2 model
     llmsycl::model::Model gpt2(globalBatchsize, globalGeneration, globalDisableTensorDumping);
-    gpt2.inference(sycl_queue);
+    auto events_per_gen = gpt2.inference(sycl_queue);
 
+    if (!disableProfiling) {
+        for (auto &[k, v]: events_per_gen) {
+            logger->info("Generation {} took {} ms on GPU.", k, getAccumulatedTime(v) / 1000000);
+        }
+    }
     logger->info("Finished inference.");
 }
