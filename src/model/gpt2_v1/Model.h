@@ -876,27 +876,27 @@ namespace llmsycl::model {
             logger->info("+-----------------------+----------------------------------------------------+\n");
             logger->info("| Parameter             | Value                                              |\n");
             logger->info("+-----------------------+----------------------------------------------------+\n");
-            logger->info("| train data pattern    | {} |\n", train_data_pattern);
-            logger->info("| val data pattern      | {} |\n", val_data_pattern);
-            logger->info("| output log file       | {} |\n", output_log_file == NULL ? "NULL" : output_log_file);
-            logger->info("| batch size B          | {} |\n", B);
-            logger->info("| sequence length T     | {} |\n", T);
-            logger->info("| learning rate         | {} |\n", learning_rate);
-            logger->info("| val_loss_every        | {} |\n", val_loss_every);
-            logger->info("| val_max_steps         | {} |\n", val_max_steps);
-            logger->info("| sample_every          | {} |\n", sample_every);
-            logger->info("| genT                  | {} |\n", genT);
+            logger->info("| train data pattern    | {} |", train_data_pattern);
+            logger->info("| val data pattern      | {} |", val_data_pattern);
+            logger->info("| output log file       | {} |", output_log_file == NULL ? "NULL" : output_log_file);
+            logger->info("| batch size B          | {} |", B);
+            logger->info("| sequence length T     | {} |", T);
+            logger->info("| learning rate         | {} |", learning_rate);
+            logger->info("| val_loss_every        | {} |", val_loss_every);
+            logger->info("| val_max_steps         | {} |", val_max_steps);
+            logger->info("| sample_every          | {} |", sample_every);
+            logger->info("| genT                  | {} |", genT);
             logger->info("+-----------------------+----------------------------------------------------+\n");
 
             // build the GPT-2 model from a checkpoint
             loadCheckpoint(sycl_queue, "../data/dataset_prepared/gpt2_124M.bin");
-            logger->info("| max_sequence_length T | {} |\n", max_seq_len);
-            logger->info("| vocab_size V          | {} |\n", vocab_size);
-            logger->info("| padded_vocab_size Vp  | {} |\n", padded_vocab_size);
-            logger->info("| num_layers L          | {} |\n", num_layers);
-            logger->info("| num_heads NH          | {} |\n", num_heads);
-            logger->info("| channels C            | {} |\n", channels);
-            logger->info("| num_parameters        | {} |\n", num_parameters);
+            logger->info("| max_sequence_length T | {} |", max_seq_len);
+            logger->info("| vocab_size V          | {} |", vocab_size);
+            logger->info("| padded_vocab_size Vp  | {} |", padded_vocab_size);
+            logger->info("| num_layers L          | {} |", num_layers);
+            logger->info("| num_heads NH          | {} |", num_heads);
+            logger->info("| channels C            | {} |", channels);
+            logger->info("| num_parameters        | {} |", num_parameters);
             logger->info("+-----------------------+----------------------------------------------------+\n");
 
             // build the Tokenizer
