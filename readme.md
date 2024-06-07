@@ -15,12 +15,12 @@ You need to have the oneAPI and CUDA SDKs installed. The code has been tested wi
 Furthermore, you need to have `numpy`, `torch`, and `python3` installed to run the training.
 The dataset will be fetched automatically.
 
-### Training
+### Train
 
 Refer to the readme file in `data/` for training the model. This is required to run the CUDA and the SYCL
 implementations.
 
-### Building
+### Build
 
 Source the oneAPI and CUDA environment and then:
 
@@ -56,7 +56,7 @@ To run the test suite:
 ./TestAll
 ```
 
-### Verifying
+### Verify
 
 The output of the SYCL code should be similar to the output of the CUDA code.
 Other than that, for more detailed comparison with the gold (CUDA) implementation, you can use the `data/compare.py`
