@@ -1734,7 +1734,7 @@ int main(int argc, char *argv[]) {
     int val_loss_every = 20; // every how many steps do we eval validation loss?
     int val_max_batches = 20; // how many batches max do we eval for validation loss?
     int sample_every = 20; // every how many steps to do inference?
-    int genT = 64; // number of steps of inference we will do
+    int genT = 10; // number of steps of inference we will do
     for (int i = 1; i < argc; i+=2) {
         if (i + 1 >= argc) { error_usage(); } // must have arg after flag
         if (argv[i][0] != '-') { error_usage(); } // must start with dash

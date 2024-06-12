@@ -579,7 +579,7 @@ namespace llmsycl::model {
                             ln1b->getDeviceBuffer() + offset_ln1b,
                             B, T, C
                     );
-                    vec_events.push_back(kernel.Launch(q, 512, vec_events.back()));
+                    vec_events.push_back(kernel.Launch(q, 256, vec_events.back()));
                     if (!disableTensorDumping) {
                         ln1->syncBlockingD2H();
                         ln1->saveHostToNpy(offset_ln1, B * T * C,
@@ -691,7 +691,7 @@ namespace llmsycl::model {
                             B, T, C
                     );
                     vec_events.push_back(
-                            kernel.Launch(q, 512, vec_events.back())
+                            kernel.Launch(q, 256, vec_events.back())
                     );
                     if (!disableTensorDumping) {
                         ln2->syncBlockingD2H();
@@ -801,7 +801,7 @@ namespace llmsycl::model {
                         B, T, C
                 );
                 vec_events.push_back(
-                        kernel.Launch(q, 512, vec_events.back())
+                        kernel.Launch(q, 256, vec_events.back())
                 );
                 if (!disableTensorDumping) {
                     lnf->syncBlockingD2H();

@@ -148,7 +148,7 @@ static inline bool test() {
     for (auto blockSize: blockSizes) {
         logger->info("Testing SoftmaxKernel with blockSize: {}", blockSize);
         logger->info("BlockSize: {}, Device Time: {} ns", blockSize,
-                     kernel.LaunchBlockingAndMeasureNanoSec(q, blockSize));
+                     kernel.LaunchBlockingAndMeasureNanoSec(q, blockSize, {}));
 
         tnOut.syncBlockingD2H();
         auto accTnOut = tnOut.getHostBuffer();

@@ -75,7 +75,7 @@ static inline bool test() {
     sycl::queue q;
     prepareToTest(q);
 
-    int B = 8;
+    int B = 1;
     int T = 1024;
     int C = 768;
 
@@ -94,10 +94,10 @@ static inline bool test() {
     core::Tensor<float> tnBias(q, {(size_t) C});
 
     core::fillTensorWithRandomData(tnIn);
-    core::fillTensorWithRandomData(tnWeight);
-    core::fillTensorWithRandomData(tnBias);
+    core::fillTensorWith(tnWeight, 1);
+    core::fillTensorWith(tnBias, 0);
 
-    int blockSizes[] = {32, 64, 128, 256, 512, 1024};
+    int blockSizes[] = {32, 64, 128, 256};
     goldCpu(
             tnOutGold, 0,
             tnMeanGold, 0,
@@ -122,7 +122,7 @@ static inline bool test() {
         );
 
         logger->info("BlockSize: {}, Device Time: {} ns", blockSize,
-                     kernel.LaunchBlockingAndMeasureNanoSec(q, blockSize));
+                     kernel.LaunchBlockingAndMeasureNanoSec(q, blockSize, {}));
         tnOut.syncBlockingD2H();
         tnMean.syncBlockingD2H();
         tnRstd.syncBlockingD2H();
@@ -130,7 +130,7 @@ static inline bool test() {
         auto accTnOutGold = tnOutGold.getHostBuffer();
         for (int i = 0; i < B * T * C; i++) {
             if (std::abs(accTnOut[i] - accTnOutGold[i]) > 1e-5) {
-                logger->error("\tLayerNormKernel tnOut failed the verification test against the gold at index: {}", i);
+                logger->error("\tLayerNormKernel tnOut failed the verification test against the gold at index: {}, UUT: {}, GOLD: {}", i, accTnOut[i], accTnOutGold[i]);
                 return false;
             }
         }

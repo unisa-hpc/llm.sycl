@@ -92,7 +92,7 @@ static inline void test() {
             );
 
             logger->info("BlockSize: {}, Device Time: {} ns", blockSize,
-                         kernel.LaunchBlockingAndMeasureNanoSec(q, blockSize));
+                         kernel.LaunchBlockingAndMeasureNanoSec(q, blockSize, {}));
 
             tnOut.syncBlockingD2H();
 
