@@ -10,7 +10,8 @@
 #include "BaseKernel.h"
 
 #undef USE_KERNEL_1_SLICE_C_PER_BLOCK
-#define USE_KERNEL_1_SLICE_C_PER_WARP
+#undef USE_KERNEL_1_SLICE_C_PER_WARP
+#define USE_KERNEL_1_SLICE_C_PER_WARP_SMEM
 
 
 namespace llmsycl::kernels {
@@ -141,9 +142,6 @@ namespace llmsycl::kernels {
                                 sycl::range<1>(blockSize)
                         ),
                         [=](sycl::nd_item<1> item) {
-                            // Let's assume every thread block handles one slice of size C.
-                            // Later we can extend it using block-stride loops.
-
                             const int warp_size = item.get_sub_group().get_local_range().get(0);
                             const int sid = (int) item.get_sub_group().get_local_id();
                             const int warp_id_group = item.get_local_id(0) / warp_size; // warp id in current block.
@@ -196,6 +194,98 @@ namespace llmsycl::kernels {
                             for (int c = sid; c < capturedC; c += warp_size) {
                                 float n = s * (pInSlice[c] - m); // normalized
                                 float o = n * capturedWeight[c] + capturedBias[c]; // scale and shift it
+                                capturedOut[warp_id_global * capturedC + c] = o; // write
+                                //os <<  i << "=" << o << sycl::endl;
+                                //item.barrier();
+                            }
+                            capturedMean[warp_id_global] = m;
+                            capturedRstd[warp_id_global] = s;
+
+                        });
+            });
+#endif
+
+#ifdef USE_KERNEL_1_SLICE_C_PER_WARP_SMEM
+                sycl::local_accessor<float, 1> localW(capturedC, h);
+                sycl::local_accessor<float, 1> localB(capturedC, h);
+                h.parallel_for(
+                        sycl::nd_range<1>(
+                                sycl::range<1>(B * T * 32),
+                                sycl::range<1>(blockSize)
+                        ),
+                        [=](sycl::nd_item<1> item) {
+                            const int warp_size = item.get_sub_group().get_local_range().get(0);
+                            const int sid = (int) item.get_sub_group().get_local_id();
+                            const int warp_id_group = item.get_local_id(0) / warp_size; // warp id in current block.
+                            const int group_size_in_warps = item.get_local_range(0) / warp_size; // how many warps per block
+                            const int warp_id_global = item.get_group(0) * group_size_in_warps + warp_id_group; // warp id in the grid.
+
+                            const int tid = (int) item.get_local_id(0);
+                            const int grid_index = (int)item.get_group(0);
+
+                            /*
+                            if (item.get_global_id() == 0) {
+                                os << "warp_size=" << warp_size << sycl::endl;
+                                os << "sid=" << sid << sycl::endl;
+                                os << "warp_id_group=" << warp_id_group << sycl::endl;
+                                os << "group_size_in_warps=" << group_size_in_warps << sycl::endl;
+                                os << "warp_id_global=" << warp_id_global << sycl::endl;
+                            }
+                            */
+
+                            if (warp_id_global >= capturedN) {
+                                os << "This should not have happened!" << sycl::endl;
+                            }
+
+                            // Stage 1. Loading into the shared memory.
+
+                            // We cannot use smem for the input tensor.
+                            // Each block has many warps. each warp needs a slice of size C.
+                            // So, we need a lot of smem just for the input tensor. Better to leave it.
+                            for (int i = tid; i < capturedC; i += blockSize) {
+                                localW[i] = capturedWeight[i];
+                                localB[i] = capturedBias[i];
+                            }
+
+                            // No need to sync at block level.
+                            // Our threads are working as a group in warps.
+                            // Although they share the same block.
+                            item.get_sub_group().barrier(); // __syncwarp();
+
+
+
+
+
+                            // Stage 2. Calculate the mean and variance.
+                            float m = 0.0f;
+                            float v = 0.0f;
+
+                            auto pInSlice = capturedInp + warp_id_global * capturedC;
+
+                            float sum = 0;
+                            for (int i = sid; i < capturedC; i += warp_size) {
+                                sum += pInSlice[i];
+                            }
+                            sum = sycl::reduce_over_group(item.get_sub_group(), sum, sycl::plus<float>());
+                            m = sum / (float)capturedC;
+                            //os << m << sycl::endl;
+
+
+                            // Stage 3. Calculate the variance
+                            for (int i = sid; i < capturedC; i += warp_size) {
+                                float xshift = pInSlice[i] - m;
+                                v += xshift * xshift;
+                            }
+                            v = sycl::reduce_over_group(item.get_sub_group(), v, sycl::plus<float>());
+                            v = v / (float)capturedC;
+                            float s = 1.0f / sycl::sqrt(v + 1e-5f);
+                            //os << v << sycl::endl;
+
+
+                            // Stage 5. Calculate the output.
+                            for (int c = sid; c < capturedC; c += warp_size) {
+                                float n = s * (pInSlice[c] - m); // normalized
+                                float o = n * localW[c] + localB[c]; // scale and shift it
                                 capturedOut[warp_id_global * capturedC + c] = o; // write
                                 //os <<  i << "=" << o << sycl::endl;
                                 //item.barrier();
