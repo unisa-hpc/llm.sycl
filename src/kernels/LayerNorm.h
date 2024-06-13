@@ -76,6 +76,7 @@ namespace llmsycl::kernels {
                                 sycl::range<1>(blockSize)
                         ),
                         [=](sycl::nd_item<1> item) {
+                            // 1 block = 1 Slice of size C.
                             // Let's assume every thread block handles one slice of size C.
                             // Later we can extend it using block-stride loops.
                             const int tid = (int) item.get_local_id(0);
@@ -142,6 +143,8 @@ namespace llmsycl::kernels {
                                 sycl::range<1>(blockSize)
                         ),
                         [=](sycl::nd_item<1> item) {
+                            // 1 Warp = 1 Slice of size C.
+
                             const int warp_size = item.get_sub_group().get_local_range().get(0);
                             const int sid = (int) item.get_sub_group().get_local_id();
                             const int warp_id_group = item.get_local_id(0) / warp_size; // warp id in current block.
@@ -214,6 +217,8 @@ namespace llmsycl::kernels {
                                 sycl::range<1>(blockSize)
                         ),
                         [=](sycl::nd_item<1> item) {
+                            // 1 Warp = 1 Slice of size C.
+
                             const int warp_size = item.get_sub_group().get_local_range().get(0);
                             const int sid = (int) item.get_sub_group().get_local_id();
                             const int warp_id_group = item.get_local_id(0) / warp_size; // warp id in current block.
@@ -251,8 +256,6 @@ namespace llmsycl::kernels {
                             // Our threads are working as a group in warps.
                             // Although they share the same block.
                             item.get_sub_group().barrier(); // __syncwarp();
-
-
 
 
 
