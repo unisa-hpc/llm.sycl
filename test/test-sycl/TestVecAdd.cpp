@@ -32,7 +32,7 @@ using namespace sycl;
 // num_repetitions: How many times to repeat the kernel invocation
 size_t num_repetitions = 1;
 // Vector type and hBuff size for this example.
-size_t vector_size = 10000;
+size_t vector_size = 100;
 typedef std::vector<int> IntVector;
 
 // Create an exception handler for asynchronous SYCL exceptions
