@@ -26,6 +26,7 @@ def gather_metrics1(parsed_csv: dict[str, dict[int, DetailedEntry]]):
                 pd.DataFrame({
                     'Duration': [entry.metrics['Duration']],
                     'Compute (SM) Throughput': [entry.metrics['Compute (SM) Throughput']],
+                    'DRAM Throughput': [entry.metrics['DRAM Throughput']],
                     'L1/TEX Cache Throughput': [entry.metrics['L1/TEX Cache Throughput']],
                     'L2 Cache Throughput': [entry.metrics['L2 Cache Throughput']],
                     'L1/TEX Hit Rate': [entry.metrics['L1/TEX Hit Rate']],
@@ -33,7 +34,6 @@ def gather_metrics1(parsed_csv: dict[str, dict[int, DetailedEntry]]):
                     'Achieved Occupancy': [entry.metrics['Achieved Occupancy']],
 
                     'Avg. Divergent Branches': [entry.metrics['Avg. Divergent Branches']],
-                    #'Memory Throughput': [entry.metrics['Memory Throughput']],
                     'Registers Per Thread': [entry.metrics['Registers Per Thread']],
                     'Static Shared Memory Per Block': [entry.metrics['Static Shared Memory Per Block']],
                     'Dynamic Shared Memory Per Block': [entry.metrics['Dynamic Shared Memory Per Block']],
