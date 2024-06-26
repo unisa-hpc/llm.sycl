@@ -8,6 +8,7 @@ target_sources(common
         PUBLIC
         ${CMAKE_CURRENT_LIST_DIR}/common.h
         ${CMAKE_CURRENT_LIST_DIR}/utils.h
+        ${CMAKE_CURRENT_LIST_DIR}/timer.h
 )
 target_include_directories(common
         PRIVATE

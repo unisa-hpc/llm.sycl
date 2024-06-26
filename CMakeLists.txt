@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
 
 # CONFIGURATION
-set(LOG_LEVEL 2 CACHE STRING "0: Trace, 1: Debug, 2: Info, 3: Warn, 4: Error, 5: Critical, 6: OFF")
+set(LOG_LEVEL 0 CACHE STRING "0: Trace, 1: Debug, 2: Info, 3: Warn, 4: Error, 5: Critical, 6: OFF")
 
 set(oneMKL_ROOT /usr/local)
 set(CMAKE_CXX_COMPILER icpx)
@@ -9,8 +9,8 @@ project(HPC_Course_2024 CXX CUDA)
 add_compile_definitions(SPDLOG_FMT_EXTERNAL)
 add_definitions(-DLOG=${LOG_LEVEL})
 set(BASE_FLAGS
-        $<$<CONFIG:Debug>:-Wall -Wextra -Wno-unused-parameter -fno-common -g -ggdb -Wno-unknown-pragmas -fsycl -fsycl-link -fsycl-targets=nvptx64-nvidia-cuda --cuda-gpu-arch=sm_89># -fsycl-device-code-split=per_kernel > #$<TARGET_PROPERTY:MKL::MKL,INTERFACE_COMPILE_OPTIONS>
-        $<$<CONFIG:Release>:-Wall -Wextra -Wno-unused-parameter -fno-common -O3 -funroll-loops -Wno-unknown-pragmas -ffast-math -fsycl -fsycl-link -fsycl-targets=nvptx64-nvidia-cuda --cuda-gpu-arch=sm_89> # -fsycl-device-code-split=per_kernel > #$<TARGET_PROPERTY:MKL::MKL,INTERFACE_COMPILE_OPTIONS>
+        $<$<CONFIG:Debug>:-Wall -Wextra -Wno-unused-parameter -fno-common -g -ggdb -Wno-unknown-pragmas -fsycl -fsycl-link -fsycl-targets=nvptx64-nvidia-cuda --cuda-gpu-arch=sm_89>
+        $<$<CONFIG:Release>:-Wall -Wextra -Wno-unused-parameter -fno-common -O3 -funroll-loops -Wno-unknown-pragmas -ffast-math -fsycl -fsycl-link -fsycl-targets=nvptx64-nvidia-cuda --cuda-gpu-arch=sm_89>
 )
 set(BASE_LINKER_FLAGS
         $<$<CONFIG:Debug>:-fsycl -fsycl-targets=nvptx64-nvidia-cuda> # -fsycl-device-code-split=per_kernel>

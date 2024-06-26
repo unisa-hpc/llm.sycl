@@ -7,6 +7,7 @@
 #include "core/Tensor.h"
 #include "common/utils.h"
 #include "common/common.h"
+#include "common/timer.h"
 #include "kernels/Encoder.h"
 #include "kernels/Residual.h"
 #include "kernels/MatmulBias.h"
@@ -60,7 +61,7 @@ namespace llmsycl::model {
         int batch_size; // the batch size (B) of current forward pass
         int seq_len; // the sequence length (T) of current forward pass
         core::TensorPtr<int> inputs; // the input tokens for the current forward pass
-        core::TensorPtr<int> targets; // the target tokens for the current forward pass
+        //core::TensorPtr<int> targets; // the target tokens for the current forward pass
         size_t num_parameters;
 
         /*************************************************************************************
@@ -266,8 +267,6 @@ namespace llmsycl::model {
             }
 
             fcloseCheck(model_file);
-            inputs = NULL;
-            targets = NULL;
             //cpu_losses = NULL;
             batch_size = 0;
             seq_len = 0;
@@ -430,7 +429,11 @@ namespace llmsycl::model {
                     // 20
                     output = std::make_unique<core::Tensor<float>>(q, std::vector({act_sizes[20]}));
                 }
-                logger->debug("allocated {} MiB for activations", (num_activations * sizeof(float)) >> 20);
+                logger->info("Allocated {} MiB for activations", (num_activations * sizeof(float)) >> 20);
+                isAllocated = true;
+
+                this->inputs = std::make_unique<core::Tensor<int>>(q, std::vector<size_t>({(size_t) B * T}), inputs);
+                //this->targets = std::make_unique<core::Tensor<int>>(q, std::vector<size_t>({(size_t) B * T}), targets);
 
             } else {
                 // validate B,T is consistent with how we've allocated the memory before
@@ -439,12 +442,16 @@ namespace llmsycl::model {
                     logger->error("Model: B=%d T=%d, Desired: B=%d T=%d", batch_size, seq_len, B, T);
                     exit(EXIT_FAILURE);
                 }
+                std::memcpy(this->inputs->getHostBuffer(), inputs, B * T * sizeof(int));
+                //std::memcpy(this->targets->getHostBuffer(), targets, B * T * sizeof(int));
+                this->inputs->syncBlockingH2D();
+                //this->targets->syncBlockingH2D();
             }
 
             // copy inputs/targets to the model
-            this->inputs = std::make_unique<core::Tensor<int>>(q, std::vector<size_t>({(size_t) B * T}), inputs);
-            if (targets != nullptr)
-                this->targets = std::make_unique<core::Tensor<int>>(q, std::vector<size_t>({(size_t) B * T}), targets);
+
+
+
 
             /// TODO: Check if tensor cloning is needed here.
             ///             ParameterTensors params = model->params; // for brevity
@@ -527,10 +534,12 @@ namespace llmsycl::model {
                     // In short, for l==2 and onwards, we can pile-up the offset each time.
                     residual_offset += B * T * C;
                 }
-                residual->syncBlockingD2H();
-                residual->saveHostToNpy(residual_offset, B * T * C,
-                                        "/tmp/c02.l" + std::to_string(l) + ".gen" + std::to_string(genIndex) +
-                                        "_uut.npy");
+                if (!disableTensorDumping) {
+                    residual->syncBlockingD2H();
+                    residual->saveHostToNpy(residual_offset, B * T * C,
+                                            "/tmp/c02.l" + std::to_string(l) + ".gen" + std::to_string(genIndex) +
+                                            "_uut.npy");
+                }
                 /// ------------------------------
 
                 // get the pointers of the weights for this layer
@@ -925,15 +934,17 @@ namespace llmsycl::model {
                 // but the inference here is just for sanity checking anyway
                 // and we can maybe optimize a bit more later, with careful tests
                 events_per_gen[t-1] = feedforward(sycl_queue, gen_tokens, NULL, B, T, t - 1);
+
                 // furthermore, below we're only using b=0 (i.e. the first row) of all B rows
                 // we're in principle running B "inference streams" in parallel here
                 // only using position 0 because it's a bit faster (copy less probs from GPU -> CPU)
                 // get the V-dimensional vector probs[0, t-1, :]
-
                 sycl_queue.wait();
-                // move probs back to CPU and sample (note we only move the first vocab_size logits, ignoring the padding)
 
+
+                // move probs back to CPU and sample (note we only move the first vocab_size logits, ignoring the padding)
                 output->syncBlockingD2H();
+
 
                 // We have to read only `vocab_size` words
                 auto accHostLogits = output->getHostBuffer() + (t - 1) * padded_vocab_size;

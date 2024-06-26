@@ -5,6 +5,7 @@ import copy
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import pathlib
+import numpy as np
 
 
 def gather_metrics1(parsed_csv: dict[str, dict[int, DetailedEntry]]):
@@ -49,6 +50,108 @@ def plot_gathered_metrics1(
         lambda_work_size_matching: Callable[[str, str, str], bool],
         dump_dir="dumps/"
 ):
+    # Overall device time comparison gold vs uut
+    my_kernels_only_cuda = 0
+    my_kernels_only_sycl = 0
+    blas_kernels_only_cuda = 0
+    blas_kernels_only_sycl = 0
+
+    accu_device_time_gold = []
+    accu_device_time_uut = []
+    included_kernels = []
+    for kn in gathered_metrics_gold:
+        if kn not in gathered_metrics_uut:
+            print("Kernel not found in uut: ", kn)
+            continue
+        else:
+            included_kernels.append(kn)
+        for ws in gathered_metrics_gold[kn]:
+            for entry in gathered_metrics_gold[kn][ws]:
+                accu_device_time_gold.append(int(entry['Duration'].iloc[0]))
+    for kn in gathered_metrics_uut:
+        if kn not in gathered_metrics_gold:
+            print("Kernel not found in uut: ", kn)
+            continue
+        else:
+            included_kernels.append(kn)
+        for ws in gathered_metrics_uut[kn]:
+            for entry in gathered_metrics_uut[kn][ws]:
+                accu_device_time_uut.append(int(entry['Duration'].iloc[0]))
+
+    print("=====================================================")
+    print("Included kernels: ", included_kernels)
+    print("Accumulated device time: ", np.sum(accu_device_time_gold))
+    print("Accumulated device time: ", np.sum(accu_device_time_uut))
+    my_kernels_only_cuda = np.sum(accu_device_time_gold)
+    my_kernels_only_sycl = np.sum(accu_device_time_uut)
+
+
+    accu_device_time_gold = []
+    accu_device_time_uut = []
+    included_kernels = []
+
+    for kn in gathered_metrics_gold:
+        if kn in gathered_metrics_uut:
+            print("Kernel not found in uut: ", kn)
+            continue
+        else:
+            included_kernels.append(kn)
+        for ws in gathered_metrics_gold[kn]:
+            for entry in gathered_metrics_gold[kn][ws]:
+                accu_device_time_gold.append(int(entry['Duration'].iloc[0]))
+    for kn in gathered_metrics_uut:
+        if kn in gathered_metrics_gold:
+            print("Kernel not found in uut: ", kn)
+            continue
+        else:
+            included_kernels.append(kn)
+        for ws in gathered_metrics_uut[kn]:
+            for entry in gathered_metrics_uut[kn][ws]:
+                accu_device_time_uut.append(int(entry['Duration'].iloc[0]))
+
+    print("=====================================================")
+    print("Included kernels: ", included_kernels)
+    print("Accumulated device time: ", np.sum(accu_device_time_gold))
+    print("Accumulated device time: ", np.sum(accu_device_time_uut))
+    blas_kernels_only_cuda = np.sum(accu_device_time_gold)
+    blas_kernels_only_sycl = np.sum(accu_device_time_uut)
+
+
+    # Specify the values of blue bars (height)
+    blue_bar = (my_kernels_only_cuda/ 1000000.0, blas_kernels_only_cuda/ 1000000.0)
+    # Specify the values of orange bars (height)
+    orange_bar = (my_kernels_only_sycl/ 1000000.0, blas_kernels_only_sycl/ 1000000.0)
+
+    # Position of bars on x-axis
+    ind = np.arange(2)
+
+    # Figure size
+    plt.figure(figsize=(5, 5))
+
+    # Width of a bar
+    width = 0.1
+
+    # Plotting
+    plt.bar(ind, blue_bar , width, label='CUDA')
+    plt.bar(ind + width, orange_bar, width, label='SYCL')
+
+    plt.xlabel('Kernels')
+    plt.ylabel('Accumulated Device Time (ms)')
+    plt.title('CUDA vs SYCL (NVIDIA RTX 2000 ADA (Mobile))')
+
+    # xticks()
+    # First argument - A list of positions at which ticks should be placed
+    # Second argument -  A list of labels to place at the given locations
+    plt.xticks(ind + width / 2, ('Non BLAS', 'CUTLASS/OneMKL'))
+
+    # Finding the best position for legends and putting it
+    plt.legend(loc='best')
+    plt.savefig(pathlib.Path(dump_dir).joinpath("device_time_comparison.svg"))
+    plt.savefig(pathlib.Path(dump_dir).joinpath("device_time_comparison.png"))
+
+
+
+    # Per kernel comparison (only for kernels with exact same names)
     for kn in gathered_metrics_gold:
         for kn2 in gathered_metrics_uut:
             if lambda_name_matching(kn, kn2):
