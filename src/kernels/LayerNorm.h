@@ -64,7 +64,7 @@ namespace llmsycl::kernels {
                     throw std::runtime_error("LayerNorm: C must be divisible to the block size.");
                 }
 
-                sycl::stream os(10240, 1280, h);
+                //sycl::stream os(10240, 1280, h);
 
 #ifdef USE_KERNEL_1_SLICE_C_PER_BLOCK
                 sycl::local_accessor<float, 1> localSliceC(capturedC, h);
@@ -236,11 +236,12 @@ namespace llmsycl::kernels {
                                 os << "group_size_in_warps=" << group_size_in_warps << sycl::endl;
                                 os << "warp_id_global=" << warp_id_global << sycl::endl;
                             }
-                            */
+
 
                             if (warp_id_global >= capturedN) {
                                 os << "This should not have happened!" << sycl::endl;
                             }
+                             */
 
                             // Stage 1. Loading into the shared memory.
 

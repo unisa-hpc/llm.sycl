@@ -86,9 +86,9 @@ namespace llmsycl::kernels {
                         OC,
                         dependencies
                 );
-                //event.wait_and_throw();
+                //event.wait();
                 events.push_back(mklEvent1);
-                //q.wait_and_throw();
+                //q.wait();
             }
 
             if (hasBias) {

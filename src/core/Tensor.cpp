@@ -201,7 +201,7 @@ void llmsycl::core::fillTensorWithRandomData(Tensor<int> &t, int valUpperLimit) 
 }
 
 void llmsycl::core::saveFromDeviceToNpy(sycl::queue &q, const float *dBuf, size_t lenWords, const std::string &filename) {
-    q.wait_and_throw();
+    q.wait();
     auto *hBuf = new float[lenWords];
     q.memcpy(hBuf, dBuf, lenWords * sizeof(float)).wait();
 

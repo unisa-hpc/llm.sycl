@@ -18,6 +18,8 @@
 #include "kernels/Gelu.h"
 #include "orig/tokenizer.h"
 
+#include <time.h>
+
 
 //#include "DataLoader.h"
 
@@ -861,6 +863,7 @@ namespace llmsycl::model {
         }
 
         std::map<int, std::vector<std::vector<sycl::event>>> inference(sycl::queue &sycl_queue) {
+            struct timespec start, end;
             std::map<int, std::vector<std::vector<sycl::event>>> events_per_gen;
             const char *train_data_pattern = "../data/dataset_prepared/tiny_shakespeare_train.bin";
             const char *val_data_pattern = "../data/dataset_prepared/tiny_shakespeare_val.bin";
@@ -913,7 +916,9 @@ namespace llmsycl::model {
             }
 
             // now sample from the model autoregressively
+            clock_gettime(CLOCK_MONOTONIC, &start);
             logger->info("generating:\n---\n");
+
             for (int t = 1; t < genT; t++) {
                 // note that inference is very wasteful here because for each token
                 // we re-calculate the forward pass for all of (B,T) positions from scratch
@@ -925,7 +930,7 @@ namespace llmsycl::model {
                 // only using position 0 because it's a bit faster (copy less probs from GPU -> CPU)
                 // get the V-dimensional vector probs[0, t-1, :]
 
-                sycl_queue.wait_and_throw();
+                sycl_queue.wait();
                 // move probs back to CPU and sample (note we only move the first vocab_size logits, ignoring the padding)
 
                 output->syncBlockingD2H();
@@ -950,6 +955,11 @@ namespace llmsycl::model {
 
                 //std::exit(44);
             }
+
+            clock_gettime(CLOCK_MONOTONIC, &end);
+            logger->info("Total time taken for inference on host (only the genT loop): {} ms.", ((end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9) * 1000);
+
+
             return events_per_gen;
         }
 

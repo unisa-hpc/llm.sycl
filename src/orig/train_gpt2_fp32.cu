@@ -68,6 +68,8 @@ cublasLtHandle_t cublaslt_handle;
 
 namespace cg = cooperative_groups;
 
+bool dumpsEnable = false;
+
 // ----------------------------------------------------------------------------
 // all the kernels
 
@@ -783,7 +785,7 @@ void attention_forward(float* out, float* qkvr, float* att,
     int HS = C / NH; // head size
 
     // permute and separate inp from (B, T, 3, NH, HS) to 3X (B, NH, T, HS)
-    writeDeviceBufToNpy(inp, B * T * 3 * C, "/tmp/xInp_gold.npy");
+    if(dumpsEnable)writeDeviceBufToNpy(inp, B * T * 3 * C, "/tmp/xInp_gold.npy");
     float *q, *k, *v;
     q = qkvr + 0 * B * T * C;
     k = qkvr + 1 * B * T * C;
@@ -793,9 +795,9 @@ void attention_forward(float* out, float* qkvr, float* att,
     permute_kernel<<<num_blocks, block_size>>>(q, k, v, inp, B, T, NH, HS); // int B, int N, int NH, int d
     cudaCheck(cudaGetLastError());
 
-    //writeDeviceBufToNpy(q, B * T * C, "/tmp/xq_gold.npy");
-    //writeDeviceBufToNpy(k, B * T * C, "/tmp/xk_gold.npy");
-    //writeDeviceBufToNpy(v, B * T * C, "/tmp/xv_gold.npy");
+    //if(dumpsEnable)writeDeviceBufToNpy(q, B * T * C, "/tmp/xq_gold.npy");
+    //if(dumpsEnable)writeDeviceBufToNpy(k, B * T * C, "/tmp/xk_gold.npy");
+    //if(dumpsEnable)writeDeviceBufToNpy(v, B * T * C, "/tmp/xv_gold.npy");
 
     //BTC: 786432
     //B * NH * T * T: 12582912
@@ -812,10 +814,10 @@ void attention_forward(float* out, float* qkvr, float* att,
     float scale = 1.0f / sqrtf(HS);
 
 
-    //writeDeviceBufToNpy(preatt, B*NH*T*T, "/tmp/xa_gold.npy");
+    //if(dumpsEnable)writeDeviceBufToNpy(preatt, B*NH*T*T, "/tmp/xa_gold.npy");
     int grid_size = CEIL_DIV(B * NH * T * 32, softmax_block_size);
     softmax_forward_kernel5<<<grid_size, softmax_block_size>>>(att, scale, preatt, B * NH, T);
-    //writeDeviceBufToNpy(att, B*NH*T*T, "/tmp/xb_gold.npy");
+    //if(dumpsEnable)writeDeviceBufToNpy(att, B*NH*T*T, "/tmp/xb_gold.npy");
     //std::exit(69);
     /*
     int grid_size = CEIL_DIV(B * NH * T, softmax_block_size);
@@ -1287,15 +1289,15 @@ void gpt2_forward(GPT2 *model, int* inputs, int* targets, int B, int T, int genI
     ParameterTensors params = model->params; // for brevity
     ActivationTensors acts = model->acts;
     float* residual;
-    writeDeviceBufToNpy(params.wte, V*C, "/tmp/c00.wte.gen"+std::to_string(genIndex)+"_gold.npy");
-    writeDeviceBufToNpy(params.wpe, model->config.max_seq_len*C, "/tmp/c00.wpe.gen"+std::to_string(genIndex)+"_gold.npy");
-    writeDeviceBufToNpy(model->inputs, B*T, "/tmp/c00.inp.gen"+std::to_string(genIndex)+"_gold.npy");
+    if(dumpsEnable)writeDeviceBufToNpy(params.wte, V*C, "/tmp/c00.wte.gen"+std::to_string(genIndex)+"_gold.npy");
+    if(dumpsEnable)writeDeviceBufToNpy(params.wpe, model->config.max_seq_len*C, "/tmp/c00.wpe.gen"+std::to_string(genIndex)+"_gold.npy");
+    if(dumpsEnable)writeDeviceBufToNpy(model->inputs, B*T, "/tmp/c00.inp.gen"+std::to_string(genIndex)+"_gold.npy");
     encoder_forward(acts.encoded, model->inputs, params.wte, params.wpe, B, T, C); // encoding goes into residual[0]
-    writeDeviceBufToNpy(acts.encoded, B*T*C, "/tmp/c01.gen"+std::to_string(genIndex)+"_gold.npy");
+    if(dumpsEnable)writeDeviceBufToNpy(acts.encoded, B*T*C, "/tmp/c01.gen"+std::to_string(genIndex)+"_gold.npy");
     for (int l = 0; l < L; l++) {
 
         residual = l == 0 ? acts.encoded : acts.residual3 + (l-1) * B * T * C;
-        writeDeviceBufToNpy(residual, B*T*C, "/tmp/c02.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
+        if(dumpsEnable)writeDeviceBufToNpy(residual, B*T*C, "/tmp/c02.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
 
         // get the pointers of the weights for this layer
         float* l_ln1w = params.ln1w + l * C;
@@ -1333,52 +1335,52 @@ void gpt2_forward(GPT2 *model, int* inputs, int* targets, int B, int T, int genI
 
         // now do the forward pass
         layernorm_forward(l_ln1, l_ln1_mean, l_ln1_rstd, residual, l_ln1w, l_ln1b, B, T, C);
-        writeDeviceBufToNpy(l_ln1, B*T*C, "/tmp/c03.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
-        writeDeviceBufToNpy(l_ln1_mean, B*T, "/tmp/c04.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
-        writeDeviceBufToNpy(l_ln1_rstd, B*T, "/tmp/c05.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
+        if(dumpsEnable)writeDeviceBufToNpy(l_ln1, B*T*C, "/tmp/c03.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
+        if(dumpsEnable)writeDeviceBufToNpy(l_ln1_mean, B*T, "/tmp/c04.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
+        if(dumpsEnable)writeDeviceBufToNpy(l_ln1_rstd, B*T, "/tmp/c05.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
 
         matmul_forward_cublaslt(scratch, l_ln1, l_qkvw, l_qkvb, B, T, C, 3*C);
-        writeDeviceBufToNpy(scratch, B*T*(3*C), "/tmp/c06.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
+        if(dumpsEnable)writeDeviceBufToNpy(scratch, B*T*(3*C), "/tmp/c06.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
 
         attention_forward(l_atty, l_qkvr, l_att, scratch, B, T, C, NH);
-        writeDeviceBufToNpy(l_atty, B*T*C, "/tmp/c07.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
-        writeDeviceBufToNpy(l_qkvr, B*T*(3*C), "/tmp/c08.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
-        writeDeviceBufToNpy(l_att, B * NH * T * T, "/tmp/c09.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
+        if(dumpsEnable)writeDeviceBufToNpy(l_atty, B*T*C, "/tmp/c07.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
+        if(dumpsEnable)writeDeviceBufToNpy(l_qkvr, B*T*(3*C), "/tmp/c08.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
+        if(dumpsEnable)writeDeviceBufToNpy(l_att, B * NH * T * T, "/tmp/c09.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
 
         matmul_forward_cublaslt(l_attproj, l_atty, l_attprojw, l_attprojb, B, T, C, C);
-        writeDeviceBufToNpy(l_attproj, B * T * C, "/tmp/c10.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
+        if(dumpsEnable)writeDeviceBufToNpy(l_attproj, B * T * C, "/tmp/c10.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
 
         residual_forward(l_residual2, residual, l_attproj, B*T*C);
-        writeDeviceBufToNpy(l_residual2, B * T * C, "/tmp/c11.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
+        if(dumpsEnable)writeDeviceBufToNpy(l_residual2, B * T * C, "/tmp/c11.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
 
         layernorm_forward(l_ln2, l_ln2_mean, l_ln2_rstd, l_residual2, l_ln2w, l_ln2b, B, T, C);
-        writeDeviceBufToNpy(l_ln2, B * T * C, "/tmp/c12.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
-        writeDeviceBufToNpy(l_ln2_mean, B * T, "/tmp/c13.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
-        writeDeviceBufToNpy(l_ln2_rstd, B * T, "/tmp/c14.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
+        if(dumpsEnable)writeDeviceBufToNpy(l_ln2, B * T * C, "/tmp/c12.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
+        if(dumpsEnable)writeDeviceBufToNpy(l_ln2_mean, B * T, "/tmp/c13.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
+        if(dumpsEnable)writeDeviceBufToNpy(l_ln2_rstd, B * T, "/tmp/c14.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
 
         matmul_forward_cublaslt(l_fch, l_ln2, l_fcw, l_fcb, B, T, C, 4*C);
-        writeDeviceBufToNpy(l_fch, B * T * 4*C, "/tmp/c15.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
+        if(dumpsEnable)writeDeviceBufToNpy(l_fch, B * T * 4*C, "/tmp/c15.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
 
         gelu_forward(l_fch_gelu, l_fch, B*T*4*C);
-        writeDeviceBufToNpy(l_fch_gelu, B * T * 4*C, "/tmp/c16.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
+        if(dumpsEnable)writeDeviceBufToNpy(l_fch_gelu, B * T * 4*C, "/tmp/c16.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
 
         matmul_forward_cublaslt(l_fcproj, l_fch_gelu, l_fcprojw, l_fcprojb, B, T, 4*C, C);
-        writeDeviceBufToNpy(l_fcproj, B * T * C, "/tmp/c17.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
+        if(dumpsEnable)writeDeviceBufToNpy(l_fcproj, B * T * C, "/tmp/c17.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
 
         residual_forward(l_residual3, l_residual2, l_fcproj, B*T*C);
-        writeDeviceBufToNpy(l_residual3, B * T * C, "/tmp/c18.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
+        if(dumpsEnable)writeDeviceBufToNpy(l_residual3, B * T * C, "/tmp/c18.l"+std::to_string(l)+".gen"+std::to_string(genIndex)+"_gold.npy");
     }
 
     residual = acts.residual3 + (L-1) * B * T * C; // last residual is in residual3
-    writeDeviceBufToNpy(residual, B * T * C, "/tmp/c19.gen"+std::to_string(genIndex)+"_gold.npy");
+    if(dumpsEnable)writeDeviceBufToNpy(residual, B * T * C, "/tmp/c19.gen"+std::to_string(genIndex)+"_gold.npy");
 
     layernorm_forward(acts.lnf, acts.lnf_mean, acts.lnf_rstd, residual, params.lnfw, params.lnfb, B, T, C);
-    writeDeviceBufToNpy(acts.lnf, B*T*C, "/tmp/c20.gen"+std::to_string(genIndex)+"_gold.npy");
-    writeDeviceBufToNpy(acts.lnf_mean, B*T, "/tmp/c21.gen"+std::to_string(genIndex)+"_gold.npy");
-    writeDeviceBufToNpy(acts.lnf_rstd, B*T, "/tmp/c22.gen"+std::to_string(genIndex)+"_gold.npy");
+    if(dumpsEnable)writeDeviceBufToNpy(acts.lnf, B*T*C, "/tmp/c20.gen"+std::to_string(genIndex)+"_gold.npy");
+    if(dumpsEnable)writeDeviceBufToNpy(acts.lnf_mean, B*T, "/tmp/c21.gen"+std::to_string(genIndex)+"_gold.npy");
+    if(dumpsEnable)writeDeviceBufToNpy(acts.lnf_rstd, B*T, "/tmp/c22.gen"+std::to_string(genIndex)+"_gold.npy");
 
     matmul_forward_cublaslt(acts.output, acts.lnf, params.wte, NULL, B, T, C, Vp);
-    writeDeviceBufToNpy(acts.output, B*T*Vp, "/tmp/c23.gen"+std::to_string(genIndex)+"_gold.npy");
+    if(dumpsEnable)writeDeviceBufToNpy(acts.output, B*T*Vp, "/tmp/c23.gen"+std::to_string(genIndex)+"_gold.npy");
 
     // also forward the cross-entropy loss function if we have the targets
     if (targets != NULL) {
@@ -1718,6 +1720,7 @@ void error_usage() {
     fprintf(stderr, "  -m <int>    val_max_batches, up to how many val batches to estimate val loss? (default = 20)\n");
     fprintf(stderr, "  -s <int>    sample_every, how often we inference the model (default = 20)\n");
     fprintf(stderr, "  -g <int>    genT, how many steps of inference we do (default = 64)\n");
+    fprintf(stderr, "  -d <int>    0: disable dumps, 1: enable dumps.");
     exit(EXIT_FAILURE);
 }
 
@@ -1749,6 +1752,7 @@ int main(int argc, char *argv[]) {
         else if (argv[i][1] == 'm') { val_max_batches = atoi(argv[i+1]); }
         else if (argv[i][1] == 's') { sample_every = atoi(argv[i+1]); }
         else if (argv[i][1] == 'g') { genT = atoi(argv[i+1]); }
+        else if (argv[i][1] == 'd') { dumpsEnable = atoi(argv[i+1]) == 1; }
         else { error_usage(); }
     }
     printf("+-----------------------+----------------------------------------------------+\n");
@@ -1856,6 +1860,7 @@ int main(int argc, char *argv[]) {
                 gen_tokens[i] = GPT2_EOT;
             }
             // now sample from the model autoregressively
+            clock_gettime(CLOCK_MONOTONIC, &start);
             printf("generating:\n---\n");
             for (int t = 1; t < genT; t++) {
                 // note that inference is very wasteful here because for each token
@@ -1871,7 +1876,7 @@ int main(int argc, char *argv[]) {
                 // move probs back to CPU and sample (note we only move the first vocab_size logits, ignoring the padding)
                 cudaCheck(cudaMemcpy(cpu_logits, logits, model.config.vocab_size * sizeof(float), cudaMemcpyDeviceToHost));
                 float coin = random_f32(&rng_state);
-                printf("\nCoin %f, done running feedforward for genIndex:%d\n",coin, t-1);
+                //printf("\nCoin %f, done running feedforward for genIndex:%d\n",coin, t-1);
                 int next_token = sample_softmax(cpu_logits, model.config.vocab_size, coin);
                 gen_tokens[t] = next_token;
 
@@ -1890,7 +1895,9 @@ int main(int argc, char *argv[]) {
                 fflush(stdout);
                 //std::exit(44);
             }
+            clock_gettime(CLOCK_MONOTONIC, &end);
             printf("\n---\n");
+            printf("Total time taken for inference on host (only the genT loop): %f ms\n", ((end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9) * 1000);
 
 
         }

@@ -104,7 +104,7 @@ namespace llmsycl::kernels {
             // STEP 2 - Creating sub buffers needed for oneMKL.
             //core::Tensor<float> tnTmp({(size_t) B * NH * T * T});
             {
-                //q.wait_and_throw();
+                //q.wait();
                 const float alpha = 1.0f;
                 const float beta = 0.0f;
                 auto e = oneapi::mkl::blas::column_major::gemm_batch(
@@ -143,7 +143,7 @@ namespace llmsycl::kernels {
 
             // STEP 4 - gemm
             {
-                //q.wait_and_throw();
+                //q.wait();
                 const float alpha = 1.0f;
                 const float beta = 0.0f;
                 // y = att @ v # (B, nh, T, T) @ (B, nh, T, hs) -> (B, nh, T, hs)
