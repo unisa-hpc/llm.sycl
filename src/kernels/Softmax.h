@@ -59,7 +59,7 @@ namespace llmsycl::kernels {
                                 sycl::range<1>(Helpers::MakeDivisible(N*C*32, blockSize)),
                                 sycl::range<1>(blockSize)
                         ),
-                        [=](sycl::nd_item<1> item) {
+                        [=](sycl::nd_item<1> item)[[intel::reqd_sub_group_size(32)]] {
 
                             const int WARP_SIZE = item.get_sub_group().get_local_range()[0];
                             int lane_id = item.get_local_id() % WARP_SIZE;

@@ -142,7 +142,7 @@ namespace llmsycl::kernels {
                                 sycl::range<1>(B * T * 32),
                                 sycl::range<1>(blockSize)
                         ),
-                        [=](sycl::nd_item<1> item) {
+                        [=](sycl::nd_item<1> item)[[intel::reqd_sub_group_size(32)]] {
                             // 1 Warp = 1 Slice of size C.
 
                             const int warp_size = item.get_sub_group().get_local_range().get(0);
@@ -216,7 +216,7 @@ namespace llmsycl::kernels {
                                 sycl::range<1>(B * T * 32),
                                 sycl::range<1>(blockSize)
                         ),
-                        [=](sycl::nd_item<1> item) {
+                        [=](sycl::nd_item<1> item)[[intel::reqd_sub_group_size(32)]] {
                             // 1 Warp = 1 Slice of size C.
 
                             const int warp_size = item.get_sub_group().get_local_range().get(0);
