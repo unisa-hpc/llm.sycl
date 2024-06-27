@@ -6,7 +6,7 @@ set(LOG_LEVEL 0 CACHE STRING "0: Trace, 1: Debug, 2: Info, 3: Warn, 4: Error, 5:
 set(USE_NVIDIA ON CACHE BOOL "Use NVIDIA GPU")
 set(USE_NVIDIA_ARCH "sm_89" CACHE STRING "NVIDIA GPU architecture, only used if USE_NVIDIA is ON.")
 set(USE_INTEL OFF CACHE BOOL "Use INTEL GPU")
-set(USE_INTEL_ARCH "ffffffffff" CACHE STRING "INTEL GPU architecture, only used if USE_INTEL is ON.")
+set(USE_INTEL_ARCH "intel_gpu_acm_g10" CACHE STRING "INTEL GPU architecture, only used if USE_INTEL is ON.")
 # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 
