@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import pathlib
 import numpy as np
+import seaborn as sns
 
 
 def gather_metrics1(parsed_csv: dict[str, dict[int, DetailedEntry]]):
@@ -41,6 +42,49 @@ def gather_metrics1(parsed_csv: dict[str, dict[int, DetailedEntry]]):
                 })
             )
     return gathered
+
+
+def seaborn_grouped_bargraph(
+        list_cuda: list[float],
+        list_sycl: list[float],
+        gpu_name: str,
+        dump_dir="dumps/"
+):
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    import pandas as pd
+
+    # Create a pandas DataFrame with your data
+    df = pd.DataFrame({
+        'Kernel Types': ['Non-LA', 'LA'],
+        'CUDA and cuBLASLt': list_cuda,
+        'SYCL and OneMKL Interface': list_sycl
+    })
+
+    # Melt the DataFrame to create separate rows for each value
+    melted_df = df.melt(id_vars='Kernel Types', value_vars=['CUDA and cuBLASLt', 'SYCL and OneMKL Interface'])
+
+    # Set seaborn plotting aesthetics
+    sns.set(style='white')
+    sns.set_style('whitegrid')
+
+    # Create the grouped bar chart
+    ax = sns.barplot(x='Kernel Types', y='value', hue='variable', data=melted_df, palette=['lime', 'turquoise'], dodge=True)
+
+
+    for p in ax.patches:
+        if p.get_height() > 0:
+            ax.annotate(f'{p.get_height():.1f}', (p.get_x() + p.get_width() / 2., p.get_height()),
+                        ha='center', va='bottom', fontsize=10)
+
+    # Add axis titles
+    plt.xlabel('Kernel Types')
+    plt.ylabel('Accumulated Device Time (ms)')
+    plt.title('CUDA vs SYCL (' + gpu_name + ')')
+
+    # Show the plot
+    plt.savefig(pathlib.Path(dump_dir).joinpath("device_time_comparison.svg"))
+    plt.savefig(pathlib.Path(dump_dir).joinpath("device_time_comparison.png"))
 
 
 def plot_gathered_metrics1(
@@ -116,37 +160,11 @@ def plot_gathered_metrics1(
     blas_kernels_only_sycl = np.sum(accu_device_time_uut)
 
     # Specify the values of blue bars (height)
-    blue_bar = (my_kernels_only_cuda / 1000000.0, blas_kernels_only_cuda / 1000000.0)
+    cuda_data = [my_kernels_only_cuda / 1000000.0, blas_kernels_only_cuda / 1000000.0]
     # Specify the values of orange bars (height)
-    orange_bar = (my_kernels_only_sycl / 1000000.0, blas_kernels_only_sycl / 1000000.0)
+    sycl_data = [my_kernels_only_sycl / 1000000.0, blas_kernels_only_sycl / 1000000.0]
 
-    # Position of bars on x-axis
-    ind = np.arange(2)
-
-    # Figure size
-    plt.figure(figsize=(5, 5))
-
-    # Width of a bar
-    width = 0.1
-
-    # Plotting
-    plt.bar(ind, blue_bar, width, label='CUDA')
-    plt.bar(ind + width, orange_bar, width, label='SYCL')
-
-    plt.xlabel('Kernels')
-    plt.ylabel('Accumulated Device Time (ms)')
-    gpu_name = input("Enter the GPU name: ")
-    plt.title('CUDA vs SYCL (' + gpu_name + ')')
-
-    # xticks()
-    # First argument - A list of positions at which ticks should be placed
-    # Second argument -  A list of labels to place at the given locations
-    plt.xticks(ind + width / 2, ('Non BLAS', 'CUTLASS/OneMKL'))
-
-    # Finding the best position for legends and putting it
-    plt.legend(loc='best')
-    plt.savefig(pathlib.Path(dump_dir).joinpath("device_time_comparison.svg"))
-    plt.savefig(pathlib.Path(dump_dir).joinpath("device_time_comparison.png"))
+    seaborn_grouped_bargraph(cuda_data, sycl_data, input("Enter the name of the GPU:"), dump_dir=dump_dir)
 
     # Per kernel comparison (only for kernels with exact same names)
     for kn in gathered_metrics_gold:
