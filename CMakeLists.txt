@@ -3,16 +3,12 @@ cmake_minimum_required(VERSION 3.14)
 
 # CONFIGURATION vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 set(LOG_LEVEL 0 CACHE STRING "0: Trace, 1: Debug, 2: Info, 3: Warn, 4: Error, 5: Critical, 6: OFF")
-set(USE_CPU ON CACHE BOOL "Use CPU")
-set(USE_NVIDIA OFF CACHE BOOL "Use NVIDIA GPU")
+set(USE_NVIDIA ON CACHE BOOL "Use NVIDIA GPU")
 set(USE_NVIDIA_ARCH "sm_89" CACHE STRING "NVIDIA GPU architecture, only used if USE_NVIDIA is ON.")
 set(USE_INTEL OFF CACHE BOOL "Use INTEL GPU")
 set(USE_INTEL_ARCH "intel_gpu_acm_g10" CACHE STRING "INTEL GPU architecture, only used if USE_INTEL is ON.")
 # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-if (USE_CPU AND (USE_NVIDIA OR USE_INTEL))
-    message(FATAL_ERROR "Cannot use both CPU and GPUs")
-endif ()
 if (USE_NVIDIA AND USE_INTEL)
     message(FATAL_ERROR "Cannot use both NVIDIA and INTEL GPUs")
 endif ()
@@ -23,31 +19,17 @@ if (USE_NVIDIA)
 else ()
     project(HPC_Course_2024 CXX)
 endif ()
-set(SYCL_AOT_FLAGS_COMPILE "NotDefined")
-set(SYCL_AOT_FLAGS_LINK "NotDefined")
-if (USE_CPU)
-    set(SYCL_AOT_FLAGS_COMPILE "-fsycl-targets=spir64,spir64_x86_64")
-    set(SYCL_AOT_FLAGS_LINK "-fsycl-targets=spir64,spir64_x86_64")
-else ()
-    if (USE_NVIDIA)
-        set(SYCL_AOT_FLAGS_COMPILE "-fsycl-targets=spir64,spir64_x86_64,nvptx64-nvidia-cuda --cuda-gpu-arch=${USE_NVIDIA_ARCH}")
-        set(SYCL_AOT_FLAGS_LINK "-fsycl-targets=spir64,spir64_x86_64,nvptx64-nvidia-cuda")
-    endif ()
-    if (USE_INTEL)
-        set(SYCL_AOT_FLAGS_COMPILE "-fsycl-targets=spir64,spir64_x86_64,${USE_INTEL_ARCH}")
-        set(SYCL_AOT_FLAGS_LINK "-fsycl-targets=spir64,spir64_x86_64,${USE_INTEL_ARCH}")
-    endif ()
-endif ()
 
 add_compile_definitions(SPDLOG_FMT_EXTERNAL)
 add_definitions(-DLOG=${LOG_LEVEL})
+
 set(BASE_FLAGS
-        $<$<CONFIG:Debug>:-Wall -Wextra -Wno-unused-parameter -fno-common -g -ggdb -Wno-unknown-pragmas -fsycl -fsycl-link ${SYCL_AOT_FLAGS_COMPILE}>
-        $<$<CONFIG:Release>:-Wall -Wextra -Wno-unused-parameter -fno-common -O3 -funroll-loops -Wno-unknown-pragmas -ffast-math -fsycl -fsycl-link ${SYCL_AOT_FLAGS_COMPILE}>
+        $<$<CONFIG:Debug>:-Wall -Wextra -Wno-unused-parameter -fno-common -g -ggdb -Wno-unknown-pragmas -fsycl -fsycl-link -fsycl-targets=nvptx64-nvidia-cuda --cuda-gpu-arch=sm_89>
+        $<$<CONFIG:Release>:-Wall -Wextra -Wno-unused-parameter -fno-common -O3 -funroll-loops -Wno-unknown-pragmas -fsycl -fsycl-link -fsycl-targets=nvptx64-nvidia-cuda --cuda-gpu-arch=sm_89>
 )
 set(BASE_LINKER_FLAGS
-        $<$<CONFIG:Debug>:-fsycl ${SYCL_AOT_FLAGS_LINK}> # -fsycl-device-code-split=per_kernel>
-        $<$<CONFIG:Release>:-fsycl ${SYCL_AOT_FLAGS_LINK}> # -fsycl-device-code-split=per_kernel>
+        $<$<CONFIG:Debug>:-fsycl -fsycl-targets=nvptx64-nvidia-cuda>
+        $<$<CONFIG:Release>:-fsycl -fsycl-targets=nvptx64-nvidia-cuda>
 )
 
 find_package(GTest REQUIRED)
@@ -101,6 +83,5 @@ message(STATUS "C compiler used by CMake: ${CMAKE_C_COMPILER}")
 message(STATUS "CXX compiler used by CMake: ${CMAKE_CXX_COMPILER}")
 message(STATUS "CUDA compiler used by CMake: ${CMAKE_CUDA_COMPILER}")
 message(STATUS "Linker used by CMake: ${CMAKE_LINKER}")
-message(STATUS "SYCL Compile Flags: ${SYCL_AOT_FLAGS_COMPILE}")
-message(STATUS "SYCL Link Flags: ${SYCL_AOT_FLAGS_LINK}")
-
+message(STATUS SYCL Compile Flags: ${BASE_FLAGS})
+message(STATUS SYCL Link Flags: ${BASE_LINKER_FLAGS})

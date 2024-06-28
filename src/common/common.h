@@ -12,6 +12,7 @@ extern int globalBatchsize;
 extern int globalGeneration;
 extern bool globalDisableTensorDumping;
 extern bool globalIsSilent;
+extern bool globalInOrder;
 extern std::string globalDirData;
 extern std::string globalDirLog;
 

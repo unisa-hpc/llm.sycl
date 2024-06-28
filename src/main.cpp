@@ -38,6 +38,7 @@ int main(int argc, char *argv[]) {
     program.add_argument("-d", "--datadir").default_value("../").store_into(globalDirData);
     program.add_argument("-l", "--logdir").default_value("/tmp/").store_into(globalDirLog);
     program.add_argument("-s", "--silent").flag().store_into(globalIsSilent);
+    program.add_argument("-i", "--inorder").default_value(false).store_into(globalInOrder);
 
     try {
         program.parse_args(argc, argv);
@@ -67,18 +68,42 @@ int main(int argc, char *argv[]) {
     };
     sycl::queue sycl_queue;
     if (disableProfiling)
-        sycl_queue = sycl::queue(sycl::gpu_selector_v, asycExceptionHandler);
+        if (globalInOrder)
+            sycl_queue = sycl::queue(
+                    sycl::gpu_selector_v,
+                    asycExceptionHandler,
+                    {sycl::property::queue::in_order()}
+            );
+        else
+            sycl_queue = sycl::queue(
+                    sycl::gpu_selector_v,
+                    asycExceptionHandler,
+                    {}
+            );
     else
-        sycl_queue = sycl::queue(
-                sycl::gpu_selector_v,
-                asycExceptionHandler,
-                {sycl::property::queue::enable_profiling()}
-        );
+        if (globalInOrder)
+            sycl_queue = sycl::queue(
+                    sycl::gpu_selector_v,
+                    asycExceptionHandler,
+                    {sycl::property::queue::enable_profiling(), sycl::property::queue::in_order()}
+            );
+        else
+            sycl_queue = sycl::queue(
+                    sycl::gpu_selector_v,
+                    asycExceptionHandler,
+                    {sycl::property::queue::enable_profiling()}
+            );
     logger->info("SYCL queue initialized.");
     logger->info("Device Name: {}", sycl_queue.get_device().get_info<sycl::info::device::name>());
     logger->info("Global Memory: {}", sycl_queue.get_device().get_info<sycl::info::device::global_mem_size>());
     logger->info("Local Memory: {}", sycl_queue.get_device().get_info<sycl::info::device::local_mem_size>());
     logger->info("CUs: {}", sycl_queue.get_device().get_info<sycl::info::device::max_compute_units>());
+    auto sg_sizes = sycl_queue.get_device().get_info<sycl::info::device::sub_group_sizes>();
+    for (auto sg_size: sg_sizes) {
+        logger->info("Subgroup Size: {}", sg_size);
+    }
+    if (globalInOrder)
+        logger->warn("In-order queue is enabled.");
 
 
     // Create a GPT2 model
