@@ -220,6 +220,8 @@ namespace llmsycl::kernels {
                             // 1 Warp = 1 Slice of size C.
 
                             const int warp_size = item.get_sub_group().get_local_range().get(0);
+                            //os << "warp_size=" << warp_size << sycl::endl;
+
                             const int sid = (int) item.get_sub_group().get_local_id();
                             const int warp_id_group = item.get_local_id(0) / warp_size; // warp id in current block.
                             const int group_size_in_warps = item.get_local_range(0) / warp_size; // how many warps per block
@@ -236,12 +238,13 @@ namespace llmsycl::kernels {
                                 os << "group_size_in_warps=" << group_size_in_warps << sycl::endl;
                                 os << "warp_id_global=" << warp_id_global << sycl::endl;
                             }
+                            */
 
-
+                            /*
                             if (warp_id_global >= capturedN) {
                                 os << "This should not have happened!" << sycl::endl;
                             }
-                             */
+                            */
 
                             // Stage 1. Loading into the shared memory.
 
