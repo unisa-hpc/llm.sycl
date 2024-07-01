@@ -22,5 +22,6 @@ target_link_libraries(model
         core
         common
         kernels
+        layers
         spdlog::spdlog
 )

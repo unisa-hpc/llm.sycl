@@ -10,12 +10,12 @@
 #include "common/timer.h"
 #include "kernels/Encoder.h"
 #include "kernels/Residual.h"
-#include "kernels/MatmulBias.h"
+#include "layers/MatmulBias.h"
 #include "kernels/Unpermute.h"
 #include "kernels/Permute.h"
 #include "kernels/Softmax.h"
-#include "kernels/LayerNorm.h"
-#include "kernels/Attention.h"
+#include "kernels/Norm.h"
+#include "layers/Attention.h"
 #include "kernels/Gelu.h"
 #include "orig/tokenizer.h"
 
@@ -309,7 +309,7 @@ namespace llmsycl::model {
             int allok = 1;
         }
 
-        std::vector<std::vector<sycl::event>> feedforward(sycl::queue &q, int *inputs, int *targets, int B, int T, int genIndex) {
+        sycl::event feedforward(sycl::queue &q, int *inputs, int *targets, int B, int T, int genIndex) {
             // convenience parameters
             int V = vocab_size;
             int Vp = padded_vocab_size;
@@ -469,9 +469,6 @@ namespace llmsycl::model {
                 this->inputs->saveHostToNpy(0, B * T, "/tmp/c00.inp.gen" + std::to_string(genIndex) + "_uut.npy");
             }
 
-            std::vector<std::vector<sycl::event>> vec_events;
-            vec_events.push_back({});
-
             // encoding goes into residual[0]
             kernels::EncoderKernel encoderKernel(
                     encoded->getDeviceBuffer(),
@@ -481,9 +478,8 @@ namespace llmsycl::model {
                     B, T, C
             );
 
-            vec_events.push_back(
-                    encoderKernel.Launch(q, 512, vec_events.back())
-            );
+            auto e1 = encoderKernel.Launch(q, 512, {});
+            sycl::event e14, e15;
 
             if (!disableTensorDumping) {
                 encoded->syncBlockingD2H();
@@ -525,6 +521,7 @@ namespace llmsycl::model {
             size_t residual_offset = 0;
 
             for (int l = 0; l < L; l++) {
+                sycl::event e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13;
                 /// ------------------------------
                 residual = l == 0 ? encoded.get() : residual3.get();
                 if (l >= 2) {
@@ -581,7 +578,7 @@ namespace llmsycl::model {
 
                 // now do the forward pass
                 {
-                    kernels::LayerNorm kernel(
+                    kernels::Norm kernel(
                             ln1->getDeviceBuffer() + offset_ln1,
                             ln1_mean->getDeviceBuffer() + offset_ln1_mean,
                             ln1_rstd->getDeviceBuffer() + offset_ln1_rstd,
@@ -590,7 +587,7 @@ namespace llmsycl::model {
                             ln1b->getDeviceBuffer() + offset_ln1b,
                             B, T, C
                     );
-                    vec_events.push_back(kernel.Launch(q, 256, vec_events.back()));
+                    e2 = kernel.Launch(q, 256, {e1/*for residual*/});
                     if (!disableTensorDumping) {
                         ln1->syncBlockingD2H();
                         ln1->saveHostToNpy(offset_ln1, B * T * C,
@@ -610,7 +607,7 @@ namespace llmsycl::model {
                 }
 
                 {
-                    kernels::MatmulBias kernel(
+                    layers::MatmulBias matmulBias(
                             scratch->getDeviceBuffer() + 0,
                             ln1->getDeviceBuffer() + offset_ln1,
                             qkvw->getDeviceBuffer() + offset_qkvw,
@@ -618,7 +615,7 @@ namespace llmsycl::model {
                             B, T, C, 3 * C,
                             true
                     );
-                    vec_events.push_back(kernel.Launch(q, 512, vec_events.back()));
+                    e3 = matmulBias.Launch(q, {e2 /*ln1*/})[0]; // Only one output tensor, so only one event!
                     if (!disableTensorDumping) {
                         scratch->syncBlockingD2H();
                         scratch->saveHostToNpy(0, B * T * (3 * C),
@@ -631,13 +628,16 @@ namespace llmsycl::model {
                     ///TODO: Fix this kernel.
                     /// atty and att are wrong.
                     /// qkvr is correct.
-                    kernels::Attention kernel(
+                    layers::Attention attention(
                             atty->getDeviceBuffer() + offset_atty,
                             qkvr->getDeviceBuffer() + offset_qkvr,
                             att->getDeviceBuffer() + offset_att,
                             scratch->getDeviceBuffer() + 0,
                             B, T, C, NH, 256);
-                    vec_events.push_back(kernel.Launch(q, 512, vec_events.back()));
+                    auto eventsVec = attention.Launch(q, {e3 /*scratch*/});
+                    e4 = eventsVec[0]; // atty
+                    e5 = eventsVec[1]; // qkvr
+                    e6 = eventsVec[2]; // att
 
                     if (!disableTensorDumping) {
                         atty->syncBlockingD2H();
@@ -658,14 +658,14 @@ namespace llmsycl::model {
                 }
 
                 {
-                    kernels::MatmulBias kernel(
+                    layers::MatmulBias matmulBias(
                             attproj->getDeviceBuffer() + offset_attproj,
                             atty->getDeviceBuffer() + offset_atty,
                             attprojw->getDeviceBuffer() + offset_attprojw,
                             attprojb->getDeviceBuffer() + offset_attprojb,
                             B, T, C, C
                     );
-                    vec_events.push_back(kernel.Launch(q, 512, vec_events.back()));
+                    e7 = matmulBias.Launch(q, {e4 /*atty*/})[0]; // Only one output tensor, so only one event.
                     if (!disableTensorDumping) {
                         attproj->syncBlockingD2H();
                         attproj->saveHostToNpy(offset_attproj, B * T * C,
@@ -680,9 +680,7 @@ namespace llmsycl::model {
                             residual->getDeviceBuffer() + residual_offset,
                             attproj->getDeviceBuffer() + offset_attproj,
                             B * T * C);
-                    vec_events.push_back(
-                            kernel.Launch(q, 512, vec_events.back())
-                    );
+                    e8 = kernel.Launch(q, 512, {e7 /*attproj*/, e1 /*residual*/});
                     if (!disableTensorDumping) {
                         residual2->syncBlockingD2H();
                         residual2->saveHostToNpy(offset_residual2, B * T * C,
@@ -692,7 +690,7 @@ namespace llmsycl::model {
                 }
 
                 {
-                    kernels::LayerNorm kernel(
+                    kernels::Norm kernel(
                             ln2->getDeviceBuffer() + offset_ln2,
                             ln2_mean->getDeviceBuffer() + offset_ln2_mean,
                             ln2_rstd->getDeviceBuffer() + offset_ln2_rstd,
@@ -701,9 +699,7 @@ namespace llmsycl::model {
                             ln2b->getDeviceBuffer() + offset_ln2b,
                             B, T, C
                     );
-                    vec_events.push_back(
-                            kernel.Launch(q, 256, vec_events.back())
-                    );
+                    e9 = kernel.Launch(q, 256, {e8 /*residual2*/});
                     if (!disableTensorDumping) {
                         ln2->syncBlockingD2H();
                         ln2_mean->syncBlockingD2H();
@@ -721,16 +717,14 @@ namespace llmsycl::model {
                 }
 
                 {
-                    kernels::MatmulBias kernel(
+                    layers::MatmulBias matmulBias(
                             fch->getDeviceBuffer() + offset_fch,
                             ln2->getDeviceBuffer() + offset_ln2,
                             fcw->getDeviceBuffer() + offset_fcw,
                             fcb->getDeviceBuffer() + offset_fcb,
                             B, T, C, 4 * C
                     );
-                    vec_events.push_back(
-                            kernel.Launch(q, 512, vec_events.back())
-                    );
+                    e10 = matmulBias.Launch(q, {e9 /*ln2*/})[0];
                     if (!disableTensorDumping) {
                         fch->syncBlockingD2H();
                         fch->saveHostToNpy(offset_fch, B * T * 4 * C,
@@ -745,9 +739,8 @@ namespace llmsycl::model {
                             fch->getDeviceBuffer() + offset_fch,
                             B * T * 4 * C
                     );
-                    vec_events.push_back(
-                            kernel.Launch(q, 512, vec_events.back())
-                    );
+
+                    e11 = kernel.Launch(q, 512, {e10 /*fch*/});
                     if (!disableTensorDumping) {
                         fch_gelu->syncBlockingD2H();
                         fch_gelu->saveHostToNpy(offset_fch_gelu, B * T * 4 * C,
@@ -757,16 +750,14 @@ namespace llmsycl::model {
                 }
 
                 {
-                    kernels::MatmulBias kernel(
+                    layers::MatmulBias matmulBias(
                             fcproj->getDeviceBuffer() + offset_fcproj,
                             fch_gelu->getDeviceBuffer() + offset_fch_gelu,
                             fcprojw->getDeviceBuffer() + offset_fcprojw,
                             fcprojb->getDeviceBuffer() + offset_fcprojb,
                             B, T, 4 * C, C
                     );
-                    vec_events.push_back(
-                            kernel.Launch(q, 512, vec_events.back())
-                    );
+                    e12 = matmulBias.Launch(q, {e11 /*fch_gelu*/})[0];
                     if (!disableTensorDumping) {
                         fcproj->syncBlockingD2H();
                         fcproj->saveHostToNpy(offset_fcproj, B * T * C,
@@ -781,15 +772,15 @@ namespace llmsycl::model {
                             residual2->getDeviceBuffer() + offset_residual2,
                             fcproj->getDeviceBuffer() + offset_fcproj,
                             B * T * C);
-                    vec_events.push_back(
-                            kernel.Launch(q, 512, vec_events.back())
-                    );
+                    e13 = kernel.Launch(q, 512, {e12 /*fcproj*/, e8 /*residual2*/});
                     if (!disableTensorDumping) {
                         residual3->syncBlockingD2H();
                         residual3->saveHostToNpy(offset_residual3, B * T * C,
                                                  "/tmp/c18.l" + std::to_string(l) + ".gen" + std::to_string(genIndex) +
                                                  "_uut.npy");
                     }
+
+                    e1 = e13; // I keep this separate for the sake of clarity.
                 }
             }
 
@@ -802,7 +793,7 @@ namespace llmsycl::model {
                                         "/tmp/c19.gen" + std::to_string(genIndex) + "_uut.npy");
             }
             {
-                kernels::LayerNorm kernel(
+                kernels::Norm kernel(
                         lnf->getDeviceBuffer() + 0,
                         lnf_mean->getDeviceBuffer() + 0,
                         lnf_rstd->getDeviceBuffer() + 0,
@@ -811,9 +802,7 @@ namespace llmsycl::model {
                         lnfb->getDeviceBuffer() + 0,
                         B, T, C
                 );
-                vec_events.push_back(
-                        kernel.Launch(q, 256, vec_events.back())
-                );
+                e14 = kernel.Launch(q, 256, {e1 /*residual*/});
                 if (!disableTensorDumping) {
                     lnf->syncBlockingD2H();
                     lnf->saveHostToNpy(0, B * T * C, "/tmp/c20.gen" + std::to_string(genIndex) + "_uut.npy");
@@ -825,7 +814,7 @@ namespace llmsycl::model {
             }
 
             {
-                kernels::MatmulBias kernel(
+                layers::MatmulBias matmulBias(
                         output->getDeviceBuffer() + 0,
                         lnf->getDeviceBuffer() + 0,
                         wte->getDeviceBuffer() + 0,
@@ -833,15 +822,13 @@ namespace llmsycl::model {
                         B, T, C, Vp,
                         false
                 );
-                vec_events.push_back(
-                        kernel.Launch(q, 512, vec_events.back())
-                );
+                e15 = matmulBias.Launch(q, {e14})[0];
                 if (!disableTensorDumping) {
                     output->syncBlockingD2H();
                     output->saveHostToNpy(0, B * T * Vp, "/tmp/c23.gen" + std::to_string(genIndex) + "_uut.npy");
                 }
             }
-            return vec_events;
+            return e15;
         }
 
         unsigned int random_u32(unsigned long long *state) {
@@ -871,9 +858,9 @@ namespace llmsycl::model {
             return n - 1; // in case of rounding errors
         }
 
-        std::map<int, std::vector<std::vector<sycl::event>>> inference(sycl::queue &sycl_queue) {
+        std::map<int, sycl::event> inference(sycl::queue &sycl_queue) {
             struct timespec start, end;
-            std::map<int, std::vector<std::vector<sycl::event>>> events_per_gen;
+            std::map<int, sycl::event> events_per_gen;
             const char *train_data_pattern = "../data/dataset_prepared/tiny_shakespeare_train.bin";
             const char *val_data_pattern = "../data/dataset_prepared/tiny_shakespeare_val.bin";
             const char *output_log_file = NULL;
@@ -933,18 +920,18 @@ namespace llmsycl::model {
                 // we re-calculate the forward pass for all of (B,T) positions from scratch
                 // but the inference here is just for sanity checking anyway
                 // and we can maybe optimize a bit more later, with careful tests
-                events_per_gen[t-1] = feedforward(sycl_queue, gen_tokens, NULL, B, T, t - 1);
+                auto e = feedforward(sycl_queue, gen_tokens, NULL, B, T, t - 1);
+
 
                 // furthermore, below we're only using b=0 (i.e. the first row) of all B rows
                 // we're in principle running B "inference streams" in parallel here
                 // only using position 0 because it's a bit faster (copy less probs from GPU -> CPU)
                 // get the V-dimensional vector probs[0, t-1, :]
-                sycl_queue.wait();
-
+                e.wait();
+                events_per_gen[t - 1] = e;
 
                 // move probs back to CPU and sample (note we only move the first vocab_size logits, ignoring the padding)
                 output->syncBlockingD2H();
-
 
                 // We have to read only `vocab_size` words
                 auto accHostLogits = output->getHostBuffer() + (t - 1) * padded_vocab_size;
@@ -968,7 +955,8 @@ namespace llmsycl::model {
             }
 
             clock_gettime(CLOCK_MONOTONIC, &end);
-            logger->info("Total time taken for inference on host (only the genT loop): {} ms.", ((end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9) * 1000);
+            logger->info("Total time taken for inference on host (only the genT loop): {} ms.",
+                         ((end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9) * 1000);
 
 
             return events_per_gen;

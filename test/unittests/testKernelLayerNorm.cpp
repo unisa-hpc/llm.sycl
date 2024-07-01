@@ -6,7 +6,7 @@
 #include "testCommon.h"
 #include "common/common.h"
 #include "core/Tensor.h"
-#include "kernels/LayerNorm.h"
+#include "kernels/Norm.h"
 #include <sycl/sycl.hpp>
 
 using namespace std;
@@ -111,7 +111,7 @@ static inline bool test() {
     for (auto blockSize: blockSizes) {
         logger->info("Testing EncoderKernel with blockSize: {}", blockSize);
 
-        kernels::LayerNorm kernel(
+        kernels::Norm kernel(
                 tnOut.getDeviceBuffer(),
                 tnMean.getDeviceBuffer(),
                 tnRstd.getDeviceBuffer(),

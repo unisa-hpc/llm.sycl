@@ -31,7 +31,7 @@ namespace llmsycl::kernels {
             addScalarParamToReport("d", d);
         }
 
-        std::vector<sycl::event> Launch(
+        sycl::event Launch(
                 sycl::queue &q,
                 int blockSize,
                 const std::vector<sycl::event> &dependencies) override {
@@ -69,7 +69,7 @@ namespace llmsycl::kernels {
                         });
             });
             report();
-            return {event};
+            return event;
         }
 
     private:

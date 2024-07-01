@@ -7,12 +7,13 @@
 #include <sycl/sycl.hpp>
 
 #include "core/Tensor.h"
-#include "BaseKernel.h"
+#include "BaseLayer.h"
+#include "kernels/Helpers.h"
 #include <oneapi/mkl.hpp>
 
-namespace llmsycl::kernels {
+namespace llmsycl::layers {
 
-    class MatmulBias : public BaseKernel {
+    class MatmulBias : public BaseLayer {
         friend class sycl::handler;
 
     public:
@@ -24,7 +25,7 @@ namespace llmsycl::kernels {
                 int B, int T, int C, int OC,
                 bool hasBias = true
         ) :
-                BaseKernel("Matmul"),
+                BaseLayer("Matmul"),
                 dOut(dOut),
                 dInp(dInp),
                 dWeight(dWeight),
@@ -40,11 +41,11 @@ namespace llmsycl::kernels {
 
         std::vector<sycl::event> Launch(
                 sycl::queue &q,
-                int blockSize,
                 const std::vector<sycl::event> &dependencies) override {
 
-            std::vector<sycl::event> events;
-            sycl::event mklEvent1;
+            sycl::event eventMkl;
+            sycl::event eventBias;
+            constexpr int BS = 256;
 
             auto capturedInp = dInp;
             auto capturedWeight = dWeight;
@@ -71,7 +72,7 @@ namespace llmsycl::kernels {
                 const float alpha = 1.0f;
                 const float beta = 0.0f;
                 //cublasSgemm(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N, OC, B*T, C, &alpha, weight, C, inp, C, &beta, out, OC));
-                mklEvent1 = oneapi::mkl::blas::column_major::gemm(
+                eventMkl = oneapi::mkl::blas::column_major::gemm(
                         q,
                         oneapi::mkl::transpose::trans,
                         oneapi::mkl::transpose::nontrans,
@@ -86,15 +87,13 @@ namespace llmsycl::kernels {
                         OC,
                         dependencies
                 );
-                //event.wait();
-                events.push_back(mklEvent1);
-                //q.wait();
             }
 
             if (hasBias) {
-                auto event = q.submit([&](sycl::handler &h) {
+                eventBias = q.submit([&](sycl::handler &h) {
 
-                    h.depends_on(mklEvent1);
+                    h.depends_on(eventMkl);
+                    h.depends_on(dependencies);
 
                     const int capturedB = this->B;
                     const int capturedT = this->T;
@@ -106,11 +105,11 @@ namespace llmsycl::kernels {
                     int grid_size = ceil_div(OC * B * T, block_size);
                     add_bias<<<grid_size, block_size>>>(out, bias, B, T, OC);
                     */
-                    h.depends_on(events);
+
                     h.parallel_for(
                             sycl::nd_range<1>(
-                                    sycl::range<1>(Helpers::MakeDivisible(OC * B * T, blockSize)),
-                                    sycl::range<1>(blockSize)
+                                    sycl::range<1>(kernels::Helpers::MakeDivisible(OC * B * T, BS)),
+                                    sycl::range<1>(BS)
                             ),
                             [=](sycl::nd_item<1> item) {
                                 auto idx = item.get_global_id(0);
@@ -124,10 +123,12 @@ namespace llmsycl::kernels {
                     );
 
                 });
-                events.push_back(event);
+                report();
+                return {eventBias};
+            } else {
+                report();
+                return {eventMkl};
             }
-            report();
-            return events;
         }
 
     private:

@@ -16,11 +16,11 @@
 
 namespace llmsycl::kernels {
 
-    class LayerNorm : public BaseKernel {
+    class Norm : public BaseKernel {
         friend class sycl::handler;
 
     public:
-        LayerNorm(
+        Norm(
                 float * __restrict__ dOut,
                 float * __restrict__ dMean,
                 float * __restrict__ dRstd,
@@ -42,7 +42,7 @@ namespace llmsycl::kernels {
             addScalarParamToReport("C", C);
         }
 
-        std::vector<sycl::event> Launch(
+        sycl::event Launch(
                 sycl::queue &q,
                 int blockSize,
                 const std::vector<sycl::event> &dependencies) override {
@@ -306,7 +306,7 @@ namespace llmsycl::kernels {
 
 
             report();
-            return {event};
+            return event;
         }
 
     private:

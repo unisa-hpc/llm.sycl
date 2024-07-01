@@ -8,15 +8,14 @@
 #include <oneapi/mkl.hpp>
 
 #include "core/Tensor.h"
-#include "BaseKernel.h"
+#include "BaseLayer.h"
+#include "kernels/Permute.h"
+#include "kernels/Unpermute.h"
+#include "kernels/Softmax.h"
 
-#include "Permute.h"
-#include "Unpermute.h"
-#include "Softmax.h"
+namespace llmsycl::layers {
 
-namespace llmsycl::kernels {
-
-    class Attention : public BaseKernel {
+    class Attention : public BaseLayer {
         friend class sycl::handler;
 
     public:
@@ -28,7 +27,7 @@ namespace llmsycl::kernels {
                 int B, int T, int C, int NH,
                 int blockSizeSoftMax
         ) :
-                BaseKernel("Attention"),
+                BaseLayer("Attention"),
                 dOut(dOut),
                 dQkvr(dQkvr),
                 dAtt(dAtt),
@@ -70,44 +69,50 @@ namespace llmsycl::kernels {
          *    tnInp: B*T*3*C                          : Mangled Query, Key, Value / SCRATCH PAD AFTERWARD
          * @param q
          * @param blockSize
-         * @return
+         * @return {eventOut, eventQkv, eventAtt, eventScratchPad}, an event for each one of the output tensors. The order is hardcoded.
          */
         std::vector<sycl::event> Launch(
                 sycl::queue &q,
-                int blockSize,
                 const std::vector<sycl::event> &dependencies) override {
+            // dInp:  Input, then used as scratch pad.
+            // dQkvr: Output, then used as input as well.
+            // dAtt:  Output, then used as input as well.
+            // dOut:  Output.
 
-            std::vector<sycl::event> events;
+
+
+            constexpr int BS = 256;
+            sycl::event eventOut;
+            sycl::event eventPreAtt;
+            sycl::event eventAtt;
+            sycl::event eventScratchPad;
+            sycl::event eventQkv;
+
             int HS = C / NH; // head size
 
             // STEP 1
             // permute and separate inp from (B, T, 3, NH, HS) to 3X (B, NH, T, HS)
             {
-                Permute permute_kernel(
+                kernels::Permute permute(
                         dQkvr + 0 * B * T * C,
                         dQkvr + 1 * B * T * C,
                         dQkvr + 2 * B * T * C,
                         dInp,
                         B, T, NH, HS);
 
-                auto e = permute_kernel.Launch(q, blockSize, {dependencies});
-                for (auto &event: e) {
-                    events.push_back(event);
-                }
+                eventQkv = permute.Launch(q, BS, {dependencies});
             }
 
-            auto dQuery = dQkvr + 0 * B * T * C;
-            auto dKey = dQkvr + 1 * B * T * C;
-            auto dValue = dQkvr + 2 * B * T * C;
+            const auto dQuery = dQkvr + 0 * B * T * C;
+            const auto dKey = dQkvr + 1 * B * T * C;
+            const auto dValue = dQkvr + 2 * B * T * C;
             auto preAtt = dInp;
 
-            // STEP 2 - Creating sub buffers needed for oneMKL.
-            //core::Tensor<float> tnTmp({(size_t) B * NH * T * T});
+            // STEP 2
             {
-                //q.wait();
                 const float alpha = 1.0f;
-                const float beta = 0.0f;
-                auto e = oneapi::mkl::blas::column_major::gemm_batch(
+                const float beta = 0.0f; // Zero means no need for setting tensor `preAtt` to zero first.
+                eventPreAtt = oneapi::mkl::blas::column_major::gemm_batch(
                         q,
                         oneapi::mkl::transpose::trans,
                         oneapi::mkl::transpose::nontrans,
@@ -121,68 +126,57 @@ namespace llmsycl::kernels {
                         preAtt,
                         T, T * T,
                         B * NH,
-                        events
+                        {eventQkv} // preAtt is used as a temporary tensor, no deps needed for it.
                 );
-                events.push_back(e);
             }
 
 
             // STEP 3 - Softmax
             {
-                Softmax softmax_kernel(
+                kernels::Softmax softmax_kernel(
                         dAtt,
                         preAtt,
                         1.0f / std::sqrt((float) HS),
                         B * NH, T
                 );
-                auto e = softmax_kernel.Launch(q, blockSizeSoftMax, events);
-                for (auto &event: e) {
-                    events.push_back(event);
-                }
+                eventAtt = softmax_kernel.Launch(q, blockSizeSoftMax, {eventPreAtt});
             }
 
             // STEP 4 - gemm
             {
-                //q.wait();
                 const float alpha = 1.0f;
                 const float beta = 0.0f;
                 // y = att @ v # (B, nh, T, T) @ (B, nh, T, hs) -> (B, nh, T, hs)
-                auto e = oneapi::mkl::blas::column_major::gemm_batch(
+                eventScratchPad = oneapi::mkl::blas::column_major::gemm_batch(
                         q,
                         oneapi::mkl::transpose::nontrans,
                         oneapi::mkl::transpose::nontrans,
                         HS, T, T,
                         alpha,
-                        // subBufV,
                         dValue,
                         HS, T * HS,
                         dAtt,
                         T, T * T,
                         beta,
-                        dInp,
+                        dInp, // We are discarding the values inside dInp again.
                         HS, T * HS,
                         B * NH,
-                        events
+                        {eventQkv, eventAtt} // beta is zero again. No deps needed for tensor C.
                 );
-                events.push_back(e);
             }
 
             // STEP 5 - Un-permute
             {
-                Unpermute unpermute_kernel(
+                kernels::Unpermute unpermute_kernel(
                         dOut,
                         dInp,
                         B, T, NH, HS
                 );
-                auto e = unpermute_kernel.Launch(q, blockSize, events);
-                for (auto &event: e) {
-                    events.push_back(event);
-                }
+                eventOut = unpermute_kernel.Launch(q, BS, {eventScratchPad});
             }
-            //std::exit(111);
 
             report();
-            return events;
+            return {eventOut, eventQkv, eventAtt, eventScratchPad};
         }
 
     private:

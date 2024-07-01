@@ -110,10 +110,11 @@ int main(int argc, char *argv[]) {
     llmsycl::model::Model gpt2(globalBatchsize, globalGeneration, globalDisableTensorDumping);
     auto events_per_gen = gpt2.inference(sycl_queue);
 
+    /*
     if (!disableProfiling) {
         for (auto &[k, v]: events_per_gen) {
             logger->info("Generation {} took {} ms on GPU.", k, getAccumulatedTime(v) / 1000000);
         }
-    }
+    }*/
     logger->info("Finished inference.");
 }

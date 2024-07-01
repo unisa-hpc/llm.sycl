@@ -1,36 +1,34 @@
-//
-// Created by saleh on 23/05/24.
-//
-
 #pragma once
 
 #include <string>
-#include "Helpers.h"
+#include <map>
+#include <sycl/sycl.hpp>
 #include "common/common.h"
-#include "spdlog/fmt/fmt.h"
+#include "core/Tensor.h"
 
-
-namespace llmsycl::kernels {
-
-    class BaseKernel {
+namespace llmsycl::layers {
+    class BaseLayer {
     protected:
-        const std::string kernelName;
+        std::string layerName;
         std::vector<std::string> reportParamsTensors;
         std::vector<std::string> reportParamsScalars;
     public:
-        BaseKernel(const std::string &kernelName) :
-                kernelName(kernelName) {
+        BaseLayer(const std::string &layerName) :
+                layerName(layerName) {
         }
 
-        virtual sycl::event Launch(sycl::queue &q, int blockSize, const std::vector<sycl::event> &dependencies)=0;
+        virtual std::vector<sycl::event> Launch(sycl::queue &q, const std::vector<sycl::event> &dependencies)=0;
 
-        size_t LaunchBlockingAndMeasureNanoSec(sycl::queue &q, int blockSize, const std::vector<sycl::event> &dependencies) {
+        size_t LaunchBlockingAndMeasureNanoSec(sycl::queue &q, const std::vector<sycl::event> &dependencies) {
             size_t sumElapsed = 0;
-            auto e = Launch(q, blockSize, dependencies);
-            e.wait();
-            auto start = e.get_profiling_info<sycl::info::event_profiling::command_start>();
-            auto end = e.get_profiling_info<sycl::info::event_profiling::command_end>();
-            sumElapsed += end - start;
+            auto eventsVec = Launch(q, dependencies);
+            for (auto &e : eventsVec)
+                e.wait();
+            for (auto &e : eventsVec) {
+                auto start = e.get_profiling_info<sycl::info::event_profiling::command_start>();
+                auto end = e.get_profiling_info<sycl::info::event_profiling::command_end>();
+                sumElapsed += end - start;
+            }
             return sumElapsed;
         }
 
@@ -62,7 +60,7 @@ namespace llmsycl::kernels {
 
         void report() {
             if (!globalIsSilent) {
-                logger->info("Kernel Queued: {}", kernelName);
+                logger->info("Layer Queued: {}", layerName);
                 for (const auto &line: reportParamsTensors) {
                     logger->debug("\t\t{}", line);
                 }
@@ -73,4 +71,5 @@ namespace llmsycl::kernels {
         }
     };
 }
+
 
