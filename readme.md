@@ -71,6 +71,25 @@ python data/compare.py
 Note that we are running the SYCL implementation with profiling and intermediate tensor dumping enabled.
 This is the default config for the modified CUDA implementation.
 
+## Notes
+Retrieve the available profiling types:
+```
+vtune -help collect
+vtune -help collect gpu-hotspots
+```
+
+Profile computing tasks:
+```
+vtune -collect gpu-hotspots -- ./LLM_SYCL <OPTIONS>
+vtune -report hotspots -group-by=computing-instance -format=csv > out.csv
+```
+
+Analyze the roofline
+```
+advisor -collect=roofline --profile-gpu --project-dir=./dir -- ./a.out
+advisor -report=roofline --gpu --project-dir=. --report-output=./roofline.html
+```
+
 ## Credits
 
 This repo is developed as the final project for the HPC course 2024 of Prof. B. Cosenza at the University of Salerno.

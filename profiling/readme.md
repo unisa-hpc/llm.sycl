@@ -19,6 +19,6 @@ make -j
 
 ## Run the python script to parse and mine the csv files
 ```bash
-python3 ../profiling/process_csv2.py
+python3 ../profiling/process_ncu_csv.py --uut <> --gold <>
 ```
 The generated plots will be at `../ploting/dumps/`.
