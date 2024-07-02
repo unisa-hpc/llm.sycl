@@ -478,6 +478,7 @@ namespace llmsycl::model {
                     B, T, C
             );
 
+            q.wait(); // The weird thing is, nvidia works without this. But, Intel produces wrong results without this.
             auto e1 = encoderKernel.Launch(q, 512, {});
             sycl::event e14, e15;
 
