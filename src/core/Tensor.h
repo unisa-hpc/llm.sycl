@@ -120,18 +120,18 @@ namespace llmsycl::core {
          * @brief Sync the device buffer to the host buffer in a blocking manner.
          */
         void syncBlockingD2H() {
-            //queue.wait();
+            queue.wait();
             queue.memcpy(hBuff, dBuff, sizeWords * sizeof(T));
-            //queue.wait();
+            queue.wait();
         }
 
         /**
          * @brief Sync the host buffer to the device buffer in a blocking manner.
          */
         void syncBlockingH2D() {
-            //queue.wait();
+            queue.wait();
             queue.memcpy(dBuff, hBuff, sizeWords * sizeof(T));
-            //queue.wait();
+            queue.wait();
         }
 
         /**
