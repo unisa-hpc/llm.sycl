@@ -25,12 +25,14 @@ add_compile_definitions(SPDLOG_FMT_EXTERNAL)
 add_definitions(-DLOG=${LOG_LEVEL})
 
 set(BASE_FLAGS
-        $<$<CONFIG:Debug>:-Wall -Wextra -Wno-unused-parameter -fno-common -g -ggdb -Wno-unknown-pragmas -fsycl -fsycl-link -fsycl-targets=nvptx64-nvidia-cuda --cuda-gpu-arch=sm_89>
-        $<$<CONFIG:Release>:-Wall -Wextra -Wno-unused-parameter -fno-common -O3 -funroll-loops -Wno-unknown-pragmas -fsycl -fsycl-link -fsycl-targets=nvptx64-nvidia-cuda --cuda-gpu-arch=sm_89>
+        $<$<AND:$<BOOL:${USE_NVIDIA}>,$<CONFIG:Debug>>:-Wall -Wextra -Wno-unused-parameter -fno-common -g -ggdb -Wno-unknown-pragmas -fsycl -fsycl-link -fsycl-targets=nvptx64-nvidia-cuda --cuda-gpu-arch=${USE_NVIDIA_ARCH}>
+        $<$<AND:$<BOOL:${USE_NVIDIA}>,$<CONFIG:Release>>:-Wall -Wextra -Wno-unused-parameter -fno-common -O3 -funroll-loops -Wno-unknown-pragmas -fsycl -fsycl-link -fsycl-targets=nvptx64-nvidia-cuda --cuda-gpu-arch=${USE_NVIDIA_ARCH}>
+        $<$<AND:$<BOOL:${USE_INTEL}>,$<CONFIG:Debug>>:-Wall -Wextra -Wno-unused-parameter -fno-common -g -ggdb -Wno-unknown-pragmas -fsycl -fsycl-link -fsycl-targets=${USE_INTEL_ARCH}>
+        $<$<AND:$<BOOL:${USE_INTEL}>,$<CONFIG:Release>>:-Wall -Wextra -Wno-unused-parameter -fno-common -O3 -funroll-loops -Wno-unknown-pragmas -fsycl -fsycl-link -fsycl-targets=${USE_INTEL_ARCH}>
 )
 set(BASE_LINKER_FLAGS
-        $<$<CONFIG:Debug>:-fsycl -fsycl-targets=nvptx64-nvidia-cuda>
-        $<$<CONFIG:Release>:-fsycl -fsycl-targets=nvptx64-nvidia-cuda>
+        $<$<BOOL:${USE_NVIDIA}>:-fsycl -fsycl-targets=nvptx64-nvidia-cuda>
+        $<$<BOOL:${USE_INTEL}>:-fsycl -fsycl-targets=${USE_INTEL_ARCH}>
 )
 
 find_package(GTest REQUIRED)
