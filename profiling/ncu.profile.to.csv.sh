@@ -3,12 +3,12 @@
 # Define the functions for each job
 job1() {
     echo "Job 1 is running..."
-    ncu --csv --set detailed --page details ./LLM_SYCL -s --batch 1 -x -g 10 -y >> profiled.uut.csv
+    ncu --csv --set detailed --page details ./LLM_SYCL -s --batch 1 -x -g 10 -y > profiled.uut.csv
 }
 
 job2() {
     echo "Job 2 is running..."
-    ncu --csv --set detailed --page details ./OrigTrain -b 1 >> profiled.gold.csv
+    ncu --csv --set detailed --page details ./OrigTrain -b 1 > profiled.gold.csv
 }
 
 job3() {

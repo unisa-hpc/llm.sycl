@@ -95,7 +95,7 @@ class InterpretNvidiaCsv:
 
     def __init__(self, file_path: str):
         with open(file_path, 'r') as f:
-            self.reader = csv.reader(f)
+            self.reader = csv.reader(f, delimiter=',', quotechar='"')
             self.rows = []
             next_is_header = False
             past_header = False

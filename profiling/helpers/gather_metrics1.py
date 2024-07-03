@@ -1,4 +1,4 @@
-from parse_ncu_csv import DetailedEntry
+from helpers.parse_ncu_csv import DetailedEntry
 import pandas as pd
 from typing import Callable
 import copy
@@ -6,10 +6,9 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import pathlib
 import numpy as np
-import seaborn as sns
 
 
-def gather_metrics1(parsed_csv: dict[str, dict[int, DetailedEntry]]):
+def ncu_gather_metrics(parsed_csv: dict[str, dict[int, DetailedEntry]]):
     """
     Gathers metrics and stores them by {kernel_name: {work_size: [DetailedEntry]}}
     :param parsed_csv:
@@ -69,8 +68,8 @@ def seaborn_grouped_bargraph(
     sns.set_style('whitegrid')
 
     # Create the grouped bar chart
-    ax = sns.barplot(x='Kernel Types', y='value', hue='variable', data=melted_df, palette=['lime', 'turquoise'], dodge=True)
-
+    ax = sns.barplot(x='Kernel Types', y='value', hue='variable', data=melted_df, palette=['lime', 'turquoise'],
+                     dodge=True)
 
     for p in ax.patches:
         if p.get_height() > 0:
@@ -87,12 +86,14 @@ def seaborn_grouped_bargraph(
     plt.savefig(pathlib.Path(dump_dir).joinpath("device_time_comparison.png"))
 
 
-def plot_gathered_metrics1(
+def plot_detailed_ncu_only(
+        gpu_name: str,
         gathered_metrics_gold: dict[str, dict[str, pd.DataFrame]],
         gathered_metrics_uut: dict[str, dict[str, pd.DataFrame]],
         lambda_name_matching: Callable[[str, str], bool],
         lambda_work_size_matching: Callable[[str, str, str], bool],
-        dump_dir="dumps/"
+        dump_dir="dumps/",
+        overall_device_time_only=False
 ):
     # Overall device time comparison gold vs uut
     my_kernels_only_cuda = 0
@@ -154,8 +155,8 @@ def plot_gathered_metrics1(
 
     print("=====================================================")
     print("Included kernels: ", included_kernels)
-    print("Accumulated device time: ", np.sum(accu_device_time_gold))
-    print("Accumulated device time: ", np.sum(accu_device_time_uut))
+    print("Accumulated device time gold: ", np.sum(accu_device_time_gold))
+    print("Accumulated device time uut: ", np.sum(accu_device_time_uut))
     blas_kernels_only_cuda = np.sum(accu_device_time_gold)
     blas_kernels_only_sycl = np.sum(accu_device_time_uut)
 
@@ -164,7 +165,10 @@ def plot_gathered_metrics1(
     # Specify the values of orange bars (height)
     sycl_data = [my_kernels_only_sycl / 1000000.0, blas_kernels_only_sycl / 1000000.0]
 
-    seaborn_grouped_bargraph(cuda_data, sycl_data, input("Enter the name of the GPU:"), dump_dir=dump_dir)
+    if overall_device_time_only:
+        return {'cuda': cuda_data, 'sycl': sycl_data, 'gpu_name': gpu_name}
+
+    seaborn_grouped_bargraph(cuda_data, sycl_data, gpu_name, dump_dir=dump_dir)
 
     # Per kernel comparison (only for kernels with exact same names)
     for kn in gathered_metrics_gold:
@@ -205,13 +209,13 @@ def plot_gathered_metrics1(
                                 [df_uut[col_names_wo_absolute], df_gold[col_names_wo_absolute]],
                                 axis=1, keys=["SYCL", "CUDA"]
                             )
-                            df_wo_absolute.plot(kind='bar', ax=axs2)  # , log=True)
+                            df_wo_absolute.plot(kind='bar', ax=axs2, color=['turquoise', 'lime'])  # , log=True)
 
                             df_absolute_only = pd.concat(
                                 [df_uut[col_names_absolute_only], df_gold[col_names_absolute_only]],
                                 axis=1, keys=["SYCL", "CUDA"]
                             )
-                            df_absolute_only.plot(kind='bar', ax=axs1)
+                            df_absolute_only.plot(kind='bar', ax=axs1, color=['turquoise', 'lime'])
 
                             axs1.get_legend().remove()
 

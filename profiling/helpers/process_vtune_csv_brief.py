@@ -40,7 +40,7 @@ def get_clean_name(name_mangled: str):
 
 
 def parse_vtune_csv(fname):
-    header, data = read_tidy_csv(args.csv)
+    header, data = read_tidy_csv(fname)
     index_name = header.index('Computing Task')
     # index_wsize = header.index('Work Size:Global')
     index_time = header.index('Computing Task:Total Time')
