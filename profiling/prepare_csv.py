@@ -2,7 +2,7 @@ import argparse
 import pickle
 import pathlib
 from helpers.parse_ncu_csv import InterpretNvidiaCsv
-from helpers.gather_metrics1 import ncu_gather_metrics, plot_gathered_metrics1
+from helpers.gather_metrics1 import ncu_gather_metrics
 from helpers.process_vtune_csv_brief import parse_vtune_csv
 
 

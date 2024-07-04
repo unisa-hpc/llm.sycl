@@ -179,7 +179,7 @@ if __name__ == '__main__':
                     "Reps": np.arange(reps),
                 },
             )
-            d1  =[[[o_data[pp][gg]["LA"][r] if pp in o_data and gg in o_data[pp] else np.nan for r in range(reps)] for gg in all_gpus] for pp in ("CUDA", "SYCL")]
+            d1 = [[[o_data[pp][gg]["LA"][r] if pp in o_data and gg in o_data[pp] else np.nan for r in range(reps)] for gg in all_gpus] for pp in ("CUDA", "SYCL")]
             xarray["LA"] = (("Type", "GPU", "Reps"), d1)
             xarray["NonLA"] = (("Type", "GPU", "Reps"), [[[o_data[pp][gg]["NonLA"][r] if pp in o_data and gg in o_data[pp] else np.nan for r in range(reps)] for gg in all_gpus] for pp in ("CUDA", "SYCL")])
             return xarray
