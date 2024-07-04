@@ -54,7 +54,7 @@ if __name__ == '__main__':
         print("Parsed NCU csv and saved to ", args.out)
 
     if args.vtune is not None:
-        la_nonla_total = parse_vtune_csv(args.ncu)
+        la_nonla_total = parse_vtune_csv(args.vtune)
         with open(args.out, 'wb') as f:
             pickle.dump(
                 add_metadata_to_data(la_nonla_total, False, False, args.type == 'vtune_sycl', args.gpu),
