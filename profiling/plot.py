@@ -4,7 +4,8 @@ import matplotlib.pyplot as plt
 import numpy
 import pickle
 import numpy as np
-import xarray as xr
+import xarray as xr#
+import pathlib
 
 from helpers.gather_metrics1 import ncu_gather_metrics, plot_detailed_ncu_only
 
@@ -49,6 +50,7 @@ if __name__ == '__main__':
     argparse = argparse.ArgumentParser()
     argparse.add_argument('--pickle', nargs='+', type=str, required=True)
     argparse.add_argument('--detailed', action='store_true', default=False)
+    argparse.add_argument('--dump_dir', type=str, required=False, default='dumps')
     args = argparse.parse_args()
 
     if args.detailed:
@@ -224,14 +226,18 @@ if __name__ == '__main__':
         xarray = convert_nested_dict_to_xarray(overall_data)
         print(xarray.to_dataframe())
 
+        # Plotting Method 1
         # plot data with pandas using boxplot using last dimension as the distribution
-        xarray.to_dataframe().boxplot(column=['LA', 'NonLA'], by=['Type', 'GPU'],  figsize=(12, 6))
+        # xarray.to_dataframe().boxplot(column=['LA', 'NonLA'], by=['Type', 'GPU'],  figsize=(12, 6))
 
-        # barplot with quartiles
-        #import seaborn as sns
-        #sns.set_theme(style="whitegrid")
-        #sns.barplot(x="Type", y="LA", hue="GPU", data=xarray.to_dataframe())
-
+        # Plotting Method 2
+        # plot bargraph with stderr
+        df = xarray.to_dataframe()
+        # perform mean on `Reps` dimension
+        df_mean = df.groupby(['Type', 'GPU']).median()
+        df_std = df.groupby(['Type', 'GPU']).std()
+        df_mean.plot(kind='bar', yerr=df_std, figsize=(12, 6), capsize=4, rot=0)
+        plt.title('Median Overall Device Time (ns) for LA and Non-LA Kernels with STD.')
 
         plt.subplots_adjust(bottom=0.3)
-        plt.show()
+        plt.savefig(pathlib.Path(args.dump_dir).joinpath('all_gpus_la_nonla_overall_devicetime.png'))

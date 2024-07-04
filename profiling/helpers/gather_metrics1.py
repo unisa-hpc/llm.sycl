@@ -82,8 +82,8 @@ def seaborn_grouped_bargraph(
     plt.title('CUDA vs SYCL (' + gpu_name + ')')
 
     # Show the plot
-    plt.savefig(pathlib.Path(dump_dir).joinpath("device_time_comparison.svg"))
-    plt.savefig(pathlib.Path(dump_dir).joinpath("device_time_comparison.png"))
+    plt.savefig(pathlib.Path(dump_dir).joinpath(gpu_name + ".device_time_comparison.svg"))
+    plt.savefig(pathlib.Path(dump_dir).joinpath(gpu_name + ".device_time_comparison.png"))
 
 
 def plot_detailed_ncu_only(
@@ -225,6 +225,6 @@ def plot_detailed_ncu_only(
                             axs2.bar_label(axs2.containers[0], padding=3, rotation=90, fontsize=4)
 
                             fig.suptitle(kn + "\n" + "Work Size Gold: " + ws + "\nWork Size UUT: " + ws2)
-                            fig.savefig(pathlib.Path(dump_dir).joinpath(kn + ".svg"))
+                            fig.savefig(pathlib.Path(dump_dir).joinpath(gpu_name + "." +kn + ".svg"))
 
                             ###############################################################
