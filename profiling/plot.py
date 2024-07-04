@@ -191,19 +191,28 @@ if __name__ == '__main__':
             simple_t = convert_type_to_cuda_or_sycl(t)
             for gpu in all_files[t]:
                 for LA_only in [True, False]:
-                    kernels, device_time = get_total_device_time(t, gpu, LA_only)
-                    if simple_t not in overall_data:
-                        overall_data[simple_t] = {}
-                    if gpu not in overall_data[simple_t]:
-                        overall_data[simple_t][gpu] = {}
+                    if t != "vtune_sycl":
+                        kernels, device_time = get_total_device_time(t, gpu, LA_only)
+                        if simple_t not in overall_data:
+                            overall_data[simple_t] = {}
+                        if gpu not in overall_data[simple_t]:
+                            overall_data[simple_t][gpu] = {}
 
-                    if LA_only:
-                        overall_data[simple_t][gpu]['LA_kernels'] = kernels
-                        overall_data[simple_t][gpu]['LA'] = device_time
+                        if LA_only:
+                            overall_data[simple_t][gpu]['LA_kernels'] = kernels
+                            overall_data[simple_t][gpu]['LA'] = device_time
+                        else:
+                            overall_data[simple_t][gpu]['NonLA_kernels'] = kernels
+                            overall_data[simple_t][gpu]['NonLA'] = device_time
                     else:
-                        overall_data[simple_t][gpu]['NonLA_kernels'] = kernels
-                        overall_data[simple_t][gpu]['NonLA'] = device_time
-
+                        if simple_t not in overall_data:
+                            overall_data[simple_t] = {}
+                        if gpu not in overall_data[simple_t]:
+                            overall_data[simple_t][gpu] = {}
+                        t1 = [i['data'][0]*1e9 for i in all_files[t][gpu]]
+                        t2 = [i['data'][1]*1e9 for i in all_files[t][gpu]]
+                        overall_data[simple_t][gpu]['LA'] = t1
+                        overall_data[simple_t][gpu]['NonLA'] = t2
                     print("GPU: ", gpu)
                     print("Type: ", simple_t)
                     print("LA_only: ", LA_only)
@@ -216,7 +225,7 @@ if __name__ == '__main__':
         print(xarray.to_dataframe())
 
         # plot data with pandas using boxplot using last dimension as the distribution
-        xarray.to_dataframe().boxplot(column=['LA'], by=['Type', 'GPU'],  figsize=(12, 6))
+        xarray.to_dataframe().boxplot(column=['LA', 'NonLA'], by=['Type', 'GPU'],  figsize=(12, 6))
 
         # barplot with quartiles
         #import seaborn as sns

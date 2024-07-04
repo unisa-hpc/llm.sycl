@@ -127,8 +127,8 @@ def plot_detailed_ncu_only(
     print("Included kernels: ", included_kernels)
     print("Accumulated device time: ", np.sum(accu_device_time_gold))
     print("Accumulated device time: ", np.sum(accu_device_time_uut))
-    my_kernels_only_cuda = np.sum(accu_device_time_gold)
-    my_kernels_only_sycl = np.sum(accu_device_time_uut)
+    blas_kernels_only_cuda = np.sum(accu_device_time_gold)
+    blas_kernels_only_sycl = np.sum(accu_device_time_uut)
 
     accu_device_time_gold = []
     accu_device_time_uut = []
@@ -157,8 +157,8 @@ def plot_detailed_ncu_only(
     print("Included kernels: ", included_kernels)
     print("Accumulated device time gold: ", np.sum(accu_device_time_gold))
     print("Accumulated device time uut: ", np.sum(accu_device_time_uut))
-    blas_kernels_only_cuda = np.sum(accu_device_time_gold)
-    blas_kernels_only_sycl = np.sum(accu_device_time_uut)
+    my_kernels_only_cuda = np.sum(accu_device_time_gold)
+    my_kernels_only_sycl = np.sum(accu_device_time_uut)
 
     # Specify the values of blue bars (height)
     cuda_data = [my_kernels_only_cuda / 1000000.0, blas_kernels_only_cuda / 1000000.0]
