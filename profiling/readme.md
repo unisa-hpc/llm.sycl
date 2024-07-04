@@ -7,18 +7,41 @@ cmake .. # on release mode
 make -j
 ```
 
-## Profile the SYCL implementation
+## Set the number of repetitions
 ```bash
-../profiling/ncu.profile.to.csv.sh 1
+reps=10
+gpu=rtx2000
 ```
 
-## Profile the CUDA implementation
+## Profile the SYCL implementation with NCU (NVIDIA)
 ```bash
-../profiling/ncu.profile.to.csv.sh 2
+bash ../profiling/unified_profile_to_csv.sh 1 $reps $gpu
 ```
+ 
 
-## Run the python script to parse and mine the csv files
+## Profile the CUDA implementation with NCU (NVIDIA)
 ```bash
-python3 ../profiling/prepare_csv.py --uut <> --gold <>
+bash ../profiling/unified_profile_to_csv.sh 2 $reps $gpu
 ```
-The generated plots will be at `../ploting/dumps/`.
+ 
+
+## Profile the SYCL implementation with Vtune (Intel)
+```bash
+bash ../profiling/unified_profile_to_csv.sh 3 $reps $gpu
+```
+ 
+
+## Prepare the CSV files and generate PKL files
+```bash
+bash ../profiling/unified_profile_to_csv.sh 4 $reps $gpu
+```
+ 
+
+## Generate the overall and the detailed plots from the PKL files
+- The overall plot uses all the PKL files from all the GPUs and their repetitions.
+- The detailed plot uses the PKL files from all available GPUs and their 1st repetition only.
+
+```bash
+bash ../profiling/unified_profile_to_csv.sh 5 $reps $gpu
+```
+ 

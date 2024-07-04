@@ -10,12 +10,13 @@ def add_metadata_to_data(
         data,
         is_ncu_cuda: bool,
         is_ncu_sycl: bool,
-        is_vtune_sycl: bool):
+        is_vtune_sycl: bool,
+        gpu_name: str):
     obj = {
         'is_ncu_cuda': is_ncu_cuda,
         'is_ncu_sycl': is_ncu_sycl,
         'is_vtune_sycl': is_vtune_sycl,
-        'gpu': input("Enter the GPU model: "),
+        'gpu': gpu_name,
         'data': data
     }
     return obj
@@ -27,6 +28,7 @@ if __name__ == '__main__':
     argparse.add_argument('--vtune', type=str, required=False)
     argparse.add_argument('--out', type=str, required=True)
     argparse.add_argument('--type', type=str, required=True)
+    argparse.add_argument('--gpu', type=str, required=True)  # just the name of the gpu
     args = argparse.parse_args()
 
     if args.ncu is None and args.vtune is None:
@@ -46,7 +48,7 @@ if __name__ == '__main__':
         grouped = raw.group_by_kernel_names()
         with open(args.out, 'wb') as f:
             pickle.dump(
-                add_metadata_to_data(grouped, args.type == 'ncu_cuda', args.type == 'ncu_sycl', False),
+                add_metadata_to_data(grouped, args.type == 'ncu_cuda', args.type == 'ncu_sycl', False, args.gpu),
                 f
             )
         print("Parsed NCU csv and saved to ", args.out)
@@ -55,7 +57,7 @@ if __name__ == '__main__':
         la_nonla_total = parse_vtune_csv(args.ncu)
         with open(args.out, 'wb') as f:
             pickle.dump(
-                add_metadata_to_data(la_nonla_total, False, False, args.type == 'vtune_sycl'),
+                add_metadata_to_data(la_nonla_total, False, False, args.type == 'vtune_sycl', args.gpu),
                 f
             )
         print("Parsed VTune csv and saved to ", args.out)
