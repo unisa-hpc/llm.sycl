@@ -4,7 +4,7 @@ ml nvhpc
 # get the directory path of this script
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-cd $DIR/..
+cd $DIR/../..
 rm -rf build
 mkdir build && cd build
 cmake ..
