@@ -18,6 +18,10 @@ if (IS_LEONARDO_A100)
     set(CMAKE_LIBRARY_PATH "/leonardo/prod/opt/compilers/cuda/12.1/none/lib64/stubs/")
 endif ()
 
+
+#convert string sm_XX to integer XX
+string(SUBSTRING ${USE_NVIDIA_ARCH} 3 2 USE_NVIDIA_ARCH_INT)
+
 if (USE_NVIDIA AND USE_INTEL)
     message(FATAL_ERROR "Cannot use both NVIDIA and INTEL GPUs")
 endif ()
@@ -28,6 +32,13 @@ if (USE_NVIDIA)
 else ()
     project(HPC_Course_2024 CXX)
 endif ()
+
+# Report
+message(STATUS "USE_NVIDIA: ${USE_NVIDIA}")
+message(STATUS "USE_NVIDIA_ARCH: ${USE_NVIDIA_ARCH}")
+message(STATUS "NVIDIA GPU Architecture (int): ${USE_NVIDIA_ARCH_INT}")
+message(STATUS "USE_INTEL: ${USE_INTEL}")
+message(STATUS "USE_INTEL_ARCH: ${USE_INTEL_ARCH}")
 
 add_compile_definitions(SPDLOG_FMT_EXTERNAL)
 add_definitions(-DLOG=${LOG_LEVEL})
