@@ -8,7 +8,15 @@ set(USE_NVIDIA ON CACHE BOOL "Use NVIDIA GPU")
 set(USE_NVIDIA_ARCH "sm_89" CACHE STRING "NVIDIA GPU architecture, only used if USE_NVIDIA is ON.")
 set(USE_INTEL OFF CACHE BOOL "Use INTEL GPU")
 set(USE_INTEL_ARCH "intel_gpu_acm_g10" CACHE STRING "INTEL GPU architecture, only used if USE_INTEL is ON.")
+set(IS_LEONARDO_A100 OFF CACHE BOOL "Set to ON if running on Leonardo")
 # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+if (IS_LEONARDO_A100)
+    set(USE_INTEL OFF)
+    set(USE_NVIDIA ON)
+    set(USE_NVIDIA_ARCH "sm_80")
+    set(CMAKE_LIBRARY_PATH "/leonardo/prod/opt/compilers/cuda/12.1/none/lib64/stubs/")
+endif ()
 
 if (USE_NVIDIA AND USE_INTEL)
     message(FATAL_ERROR "Cannot use both NVIDIA and INTEL GPUs")

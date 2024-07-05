@@ -237,7 +237,7 @@ if __name__ == '__main__':
         df_mean = df.groupby(['Type', 'GPU']).median()
         df_std = df.groupby(['Type', 'GPU']).std()
         df_mean.plot(kind='bar', yerr=df_std, figsize=(12, 6), capsize=4, rot=0)
-        plt.title('Median Overall Device Time (ns) for LA and Non-LA Kernels with STD.')
+        plt.title('Median Overall Device Time (ns) for LA and Non-LA Kernels with Standard Deviation')
 
         plt.subplots_adjust(bottom=0.3)
         plt.savefig(pathlib.Path(args.dump_dir).joinpath('all_gpus_la_nonla_overall_devicetime.png'))
