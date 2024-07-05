@@ -1,5 +1,6 @@
 # load nvhpc for ncu
 ml nvhpc
+source setenv.sh
 
 # get the directory path of this script
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
