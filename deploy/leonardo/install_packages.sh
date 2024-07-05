@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # Install OneAPI with Online Installer
 cd /tmp
 wget https://registrationcenter-download.intel.com/akdlm/IRC_NAS/9a98af19-1c68-46ce-9fdd-e249240c7c42/l_BaseKit_p_2024.2.0.634.sh

@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # load nvhpc for ncu
 ml nvhpc
 source setenv.sh
