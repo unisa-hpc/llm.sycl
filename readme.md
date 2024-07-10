@@ -4,7 +4,7 @@ This project is basically a partial translation of [LLM.C](https://github.com/ka
 C++ SYCL.
 
 ## Contact
-Please feel free to contact me anytime via github issues or email: salehjamaligolzar [at] gmail.com
+Please feel free to contact [me](https://salehjg.github.io/) anytime via [GitHub](https://github.com/salehjg) or email: salehjamaligolzar [at] gmail [dot] com .
 
 ## How to
 
