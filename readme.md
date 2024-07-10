@@ -3,6 +3,9 @@
 This project is basically a partial translation of [LLM.C](https://github.com/karpathy/llm.c) repository from C-CUDA to
 C++ SYCL.
 
+## Contact
+Please feel free to contact me anytime via github issues or email: salehjamaligolzar [at] gmail.com
+
 ## How to
 
 ### Prepare
