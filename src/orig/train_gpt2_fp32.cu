@@ -799,10 +799,10 @@ void attention_forward(float* out, float* qkvr, float* att,
     //if(dumpsEnable)writeDeviceBufToNpy(k, B * T * C, "/tmp/xk_gold.npy");
     //if(dumpsEnable)writeDeviceBufToNpy(v, B * T * C, "/tmp/xv_gold.npy");
 
-    //BTC: 786432
-    //B * NH * T * T: 12582912
-    //std::printf("BTC: %d\n", B * T * C);
-    //std::printf("B * NH * T * T: %d\n", B * NH * T * T);
+    //  BTC: 786432
+    //  B * NH * T * T: 12582912
+    //  std::printf("BTC: %d\n", B * T * C);
+    //  std::printf("B * NH * T * T: %d\n", B * NH * T * T);
 
     // batched matrix multiply with cuBLAS
     const float alpha = 1.0f;
@@ -814,14 +814,14 @@ void attention_forward(float* out, float* qkvr, float* att,
     float scale = 1.0f / sqrtf(HS);
 
 
-    //if(dumpsEnable)writeDeviceBufToNpy(preatt, B*NH*T*T, "/tmp/xa_gold.npy");
+    //  if(dumpsEnable)writeDeviceBufToNpy(preatt, B*NH*T*T, "/tmp/xa_gold.npy");
     int grid_size = CEIL_DIV(B * NH * T * 32, softmax_block_size);
     softmax_forward_kernel5<<<grid_size, softmax_block_size>>>(att, scale, preatt, B * NH, T);
-    //if(dumpsEnable)writeDeviceBufToNpy(att, B*NH*T*T, "/tmp/xb_gold.npy");
-    //std::exit(69);
+    //  if(dumpsEnable)writeDeviceBufToNpy(att, B*NH*T*T, "/tmp/xb_gold.npy");
+    //  std::exit(49);
     /*
-    int grid_size = CEIL_DIV(B * NH * T, softmax_block_size);
-    softmax_forward_kernel1_fused<<<grid_size, softmax_block_size>>>(att, scale, preatt, B*NH*T, T);
+      int grid_size = CEIL_DIV(B * NH * T, softmax_block_size);
+      softmax_forward_kernel1_fused<<<grid_size, softmax_block_size>>>(att, scale, preatt, B*NH*T, T);
     */
 
 
